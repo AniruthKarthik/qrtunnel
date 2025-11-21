@@ -270,6 +270,10 @@ class SSHTunnel:
                 if line:
                     line = line.strip()
                     
+                    # Skip empty lines
+                    if not line:
+                        continue
+                    
                     if not self.public_url:
                         match = url_pattern.search(line)
                         if match:
