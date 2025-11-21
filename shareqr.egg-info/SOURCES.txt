@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+shareqr/__init__.py
+shareqr/__main__.py
+shareqr/qr.py
+shareqr.egg-info/PKG-INFO
+shareqr.egg-info/SOURCES.txt
+shareqr.egg-info/dependency_links.txt
+shareqr.egg-info/entry_points.txt
+shareqr.egg-info/requires.txt
+shareqr.egg-info/top_level.txt

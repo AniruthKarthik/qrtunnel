@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ShareQR: Simple file sharing via QR code.
-Usage: python qr.py <file_path1> [<file_path2> ...]
+shareqr: Simple file sharing via QR code.
+Usage: shareqr <file_path1> [<file_path2> ...]
 """
 
 import os
@@ -12,9 +12,24 @@ import subprocess
 import threading
 import time
 import re
+import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from pathlib import Path
+import termios
+import tty
+
+
+def getch():
+    """Reads a single character from stdin without echoing or requiring Enter."""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
 
 
 class Config:
@@ -29,11 +44,6 @@ class FileShareHandler(BaseHTTPRequestHandler):
     
     # Class variables shared across instances
     file_paths = None
-    
-    def log_message(self, format, *args):
-        """Override to add custom logging"""
-        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        print(f"[{timestamp}] {self.client_address[0]} - {format % args}")
     
     def do_GET(self):
         """Handle GET requests"""
@@ -53,7 +63,7 @@ class FileShareHandler(BaseHTTPRequestHandler):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShareQR - File Download</title>
+    <title>shareqr - File Download</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -270,11 +280,18 @@ def check_dependencies():
 
 def main():
     """Main function"""
-    if len(sys.argv) < 2:
-        print("Usage: python shareqr.py <file_path1> [<file_path2> ...]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="shareqr: Simple file sharing via QR code.",
+        usage="shareqr <file_path1> [<file_path2> ...]"
+    )
+    parser.add_argument('file_paths', nargs='+', help='One or more paths to the files you want to share.')
     
-    file_paths = sys.argv[1:]
+    if len(sys.argv) < 2:
+        parser.print_help()
+        sys.exit(1)
+
+    args = parser.parse_args()
+    file_paths = args.file_paths
     
     # Validate files
     for file_path in file_paths:
@@ -291,7 +308,7 @@ def main():
     
     # Display banner
     print("\n" + "="*60)
-    print("ShareQR - Simple File Sharing")
+    print("shareqr - Simple File Sharing")
     print("="*60)
     print("Files to be shared:")
     for file_path in file_paths:
@@ -318,17 +335,22 @@ def main():
     # Generate and display QR code
     generate_qr_code(tunnel.public_url)
     
-    print("[*] Server is running. Press Ctrl+C to stop.\n")
+    print("[*] Server is running. Press 'q' to quit, or Ctrl+C to stop.\n")
     
     try:
-        # Keep the main thread alive
+        # Keep the main thread alive, checking for 'q' to quit
         while True:
-            time.sleep(1)
+            char = getch()
+            if char == 'q':
+                print("\n\n[*] 'q' pressed. Shutting down...")
+                break
+            time.sleep(0.1) # Small delay to prevent busy-waiting
     except KeyboardInterrupt:
-        print("\n\n[*] Shutting down...")
+        print("\n\n[*] Ctrl+C pressed. Shutting down...")
+    finally:
         tunnel.stop()
         server.shutdown()
         print("[*] Server stopped. Goodbye!")
 
-
-main()
+if __name__ == '__main__':
+    main()

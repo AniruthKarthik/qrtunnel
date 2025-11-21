@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shareqr"
+version = "0.0.1"
+authors = [
+  { name="Aniruth Karthik", email="aniruthkarthik10@gmail.com" },
+]
+description = "A simple tool to share files from the command line via a QR code."
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "qrcode",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/AniruthKarthik/shareqr"
+"Bug Tracker" = "https://github.com/AniruthKarthik/shareqr/issues"
+"PyPI" = "https://pypi.org/project/shareqr/"
+"AUR" = "https://aur.archlinux.org/packages/shareqr/"
+
+[project.scripts]
+shareqr = "shareqr.qr:main"
+
+[tool.uv.workspace]
+members = [
+    "shareqr",
+]
