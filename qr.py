@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ShareQR-SSH: Secure file sharing via QR code with OTP authentication
-Usage: python shareqr.py <file_path>
+ShareQR: Simple file sharing via QR code.
+Usage: python qr.py <file_path1> [<file_path2> ...]
 """
 
 import os
@@ -22,38 +22,13 @@ class Config:
     LOCAL_PORT = 8000
     REMOTE_PORT = 80
     SSH_HOST = "nokey@localhost.run"
-    OTP_LENGTH = 4
     
-
-class OTPManager:
-    """Manages OTP generation and validation"""
-    
-    def __init__(self):
-        self.otp = self.generate_otp()
-        self.attempts = 0
-        self.max_attempts = 5
-        
-    def generate_otp(self):
-        """Generate a random 4-digit OTP"""
-        return ''.join([str(random.randint(0, 9)) for _ in range(Config.OTP_LENGTH)])
-    
-    def verify(self, input_otp):
-        """Verify the provided OTP"""
-        self.attempts += 1
-        return input_otp == self.otp
-    
-    def is_locked(self):
-        """Check if too many failed attempts"""
-        return self.attempts >= self.max_attempts
-
 
 class FileShareHandler(BaseHTTPRequestHandler):
-    """HTTP request handler with OTP authentication"""
+    """HTTP request handler for file sharing"""
     
     # Class variables shared across instances
-    file_path = None
-    otp_manager = None
-    authenticated_ips = set()
+    file_paths = None
     
     def log_message(self, format, *args):
         """Override to add custom logging"""
@@ -64,43 +39,21 @@ class FileShareHandler(BaseHTTPRequestHandler):
         """Handle GET requests"""
         parsed_path = urlparse(self.path)
         
-        # Check if client IP is already authenticated
-        if self.client_address[0] in self.authenticated_ips:
-            self.serve_file()
-            return
-        
-        # Parse query parameters for OTP
-        query_params = parse_qs(parsed_path.query)
-        submitted_otp = query_params.get('otp', [''])[0]
-        
-        if submitted_otp:
-            # OTP was submitted, verify it
-            if self.otp_manager.is_locked():
-                self.send_error_page("Too many failed attempts. Access denied.")
-                return
-            
-            if self.otp_manager.verify(submitted_otp):
-                # Correct OTP - add IP to authenticated list and serve file
-                self.authenticated_ips.add(self.client_address[0])
-                print(f"✓ Correct OTP from {self.client_address[0]}")
-                self.serve_file()
-            else:
-                # Wrong OTP
-                remaining = self.otp_manager.max_attempts - self.otp_manager.attempts
-                print(f"✗ Wrong OTP from {self.client_address[0]} (Attempts remaining: {remaining})")
-                self.send_error_page(f"Invalid OTP. {remaining} attempts remaining.")
+        if parsed_path.path == '/download':
+            self.serve_files_as_zip()
         else:
-            # No OTP submitted, show the authentication form
-            self.send_auth_page()
+            self.send_download_page()
     
-    def send_auth_page(self):
-        """Send HTML page requesting OTP"""
+    def send_download_page(self):
+        """Send HTML page with a download button"""
+        file_list_html = "".join(f"<li>{os.path.basename(p)}</li>" for p in self.file_paths)
+        
         html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShareQR-SSH Authentication</title>
+    <title>ShareQR - File Download</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -111,100 +64,75 @@ class FileShareHandler(BaseHTTPRequestHandler):
             align-items: center;
             justify-content: center;
             padding: 20px;
+            color: white;
         }}
         .container {{
-            background: white;
+            background: rgba(255, 255, 255, 0.1);
             border-radius: 20px;
             padding: 40px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }}
         h1 {{
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 24px;
+            margin-bottom: 20px;
+            font-size: 32px;
+            font-weight: 600;
         }}
         p {{
-            color: #666;
             margin-bottom: 30px;
-            font-size: 14px;
+            font-size: 16px;
+            opacity: 0.8;
         }}
-        .otp-input {{
-            width: 100%;
-            padding: 15px;
-            font-size: 24px;
-            text-align: center;
-            border: 2px solid #e0e0e0;
+        .file-list {{
+            list-style: none;
+            margin-bottom: 40px;
+            text-align: left;
+            background: rgba(0,0,0,0.2);
+            padding: 20px;
             border-radius: 10px;
-            margin-bottom: 20px;
-            letter-spacing: 10px;
-            transition: border-color 0.3s;
         }}
-        .otp-input:focus {{
-            outline: none;
-            border-color: #667eea;
+        .file-list li {{
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }}
-        button {{
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .file-list li:last-child {{
+            border-bottom: none;
+        }}
+        .download-button {{
+            display: inline-block;
+            padding: 20px 40px;
+            background: #ff6b6b;
             color: white;
             border: none;
             border-radius: 10px;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s;
+            text-decoration: none;
+            transition: transform 0.2s, background 0.2s;
         }}
-        button:hover {{
-            transform: translateY(-2px);
+        .download-button:hover {{
+            transform: translateY(-3px);
+            background: #ff8787;
         }}
-        button:active {{
+        .download-button:active {{
             transform: translateY(0);
-        }}
-        .file-info {{
-            background: #f5f5f5;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }}
-        .file-info strong {{
-            color: #667eea;
         }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔐 Secure File Access</h1>
-        <p>Enter the 4-digit OTP to download the file</p>
-        <div class="file-info">
-            <strong>File:</strong> {os.path.basename(self.file_path)}
-        </div>
-        <form method="GET" onsubmit="return validateOTP()">
-            <input type="text" 
-                   name="otp" 
-                   class="otp-input" 
-                   placeholder="0000" 
-                   maxlength="4" 
-                   pattern="[0-9]{{4}}"
-                   inputmode="numeric"
-                   required
-                   autofocus>
-            <button type="submit">Download File</button>
-        </form>
+        <h1>🚀 Files Ready for Download</h1>
+        <p>Click the button below to download all files as a single ZIP archive.</p>
+        <ul class="file-list">
+            {file_list_html}
+        </ul>
+        <a href="/download" class="download-button">Download All Files</a>
     </div>
-    <script>
-        function validateOTP() {{
-            const input = document.querySelector('.otp-input');
-            const value = input.value;
-            if (value.length !== 4 || !/^[0-9]{{4}}$/.test(value)) {{
-                alert('Please enter a valid 4-digit OTP');
-                return false;
-            }}
-            return true;
-        }}
-    </script>
 </body>
 </html>"""
         
@@ -213,82 +141,31 @@ class FileShareHandler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', len(html.encode()))
         self.end_headers()
         self.wfile.write(html.encode())
-    
-    def send_error_page(self, message):
-        """Send HTML error page"""
-        html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Access Denied</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }}
-        .container {{
-            background: white;
-            border-radius: 20px;
-            padding: 40px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 400px;
-            width: 100%;
-            text-align: center;
-        }}
-        .error-icon {{
-            font-size: 64px;
-            margin-bottom: 20px;
-        }}
-        h1 {{
-            color: #f5576c;
-            margin-bottom: 15px;
-            font-size: 24px;
-        }}
-        p {{
-            color: #666;
-            font-size: 16px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error-icon">❌</div>
-        <h1>Access Denied</h1>
-        <p>{message}</p>
-    </div>
-</body>
-</html>"""
-        
-        self.send_response(403)
-        self.send_header('Content-type', 'text/html')
-        self.send_header('Content-Length', len(html.encode()))
-        self.end_headers()
-        self.wfile.write(html.encode())
-    
-    def serve_file(self):
-        """Serve the actual file for download"""
+
+    def serve_files_as_zip(self):
+        """Create a ZIP archive of all files and serve it"""
         try:
-            with open(self.file_path, 'rb') as f:
-                file_data = f.read()
+            import zipfile
+            from io import BytesIO
+
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in self.file_paths:
+                    zipf.write(file_path, os.path.basename(file_path))
             
-            filename = os.path.basename(self.file_path)
+            zip_buffer.seek(0)
+            zip_data = zip_buffer.getvalue()
+
             self.send_response(200)
-            self.send_header('Content-type', 'application/octet-stream')
-            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-            self.send_header('Content-Length', len(file_data))
+            self.send_header('Content-type', 'application/zip')
+            self.send_header('Content-Disposition', 'attachment; filename="files.zip"')
+            self.send_header('Content-Length', len(zip_data))
             self.end_headers()
-            self.wfile.write(file_data)
+            self.wfile.write(zip_data)
             
-            print(f"✓ File served successfully to {self.client_address[0]}")
+            print(f"✓ Files served as ZIP to {self.client_address[0]}")
         except Exception as e:
-            print(f"✗ Error serving file: {e}")
+            print(f"✗ Error creating or serving ZIP file: {e}")
             self.send_error(500, "Internal server error")
 
 
@@ -349,7 +226,7 @@ class SSHTunnel:
             print("\n[*] SSH tunnel closed")
 
 
-def generate_qr_code(url, otp):
+def generate_qr_code(url):
     """Generate and display QR code in terminal"""
     try:
         import qrcode
@@ -364,12 +241,11 @@ def generate_qr_code(url, otp):
         qr.make(fit=True)
         
         print("\n" + "="*60)
-        print("SCAN THIS QR CODE TO ACCESS THE FILE:")
+        print("SCAN THIS QR CODE TO ACCESS THE FILES:")
         print("="*60)
         qr.print_ascii(invert=True)
         print("="*60)
-        print(f"\n🔑 OTP: {otp}")
-        print(f"🌐 URL: {url}")
+        print(f"\n🌐 URL: {url}")
         print("="*60 + "\n")
         
     except ImportError:
@@ -378,8 +254,7 @@ def generate_qr_code(url, otp):
         print("⚠️  QR code library not installed")
         print("Install with: pip install qrcode")
         print("="*60)
-        print(f"\n🔑 OTP: {otp}")
-        print(f"🌐 URL: {url}")
+        print(f"\n🌐 URL: {url}")
         print("="*60 + "\n")
 
 
@@ -395,38 +270,36 @@ def check_dependencies():
 
 def main():
     """Main function"""
-    if len(sys.argv) != 2:
-        print("Usage: python shareqr.py <file_path>")
+    if len(sys.argv) < 2:
+        print("Usage: python shareqr.py <file_path1> [<file_path2> ...]")
         sys.exit(1)
     
-    file_path = sys.argv[1]
+    file_paths = sys.argv[1:]
     
-    # Validate file
-    if not os.path.exists(file_path):
-        print(f"✗ Error: File '{file_path}' not found")
-        sys.exit(1)
-    
-    if not os.path.isfile(file_path):
-        print(f"✗ Error: '{file_path}' is not a file")
-        sys.exit(1)
+    # Validate files
+    for file_path in file_paths:
+        if not os.path.exists(file_path):
+            print(f"✗ Error: File '{file_path}' not found")
+            sys.exit(1)
+        
+        if not os.path.isfile(file_path):
+            print(f"✗ Error: '{file_path}' is not a file")
+            sys.exit(1)
     
     # Check dependencies
     check_dependencies()
     
     # Display banner
     print("\n" + "="*60)
-    print("ShareQR-SSH - Secure File Sharing with OTP Authentication")
+    print("ShareQR - Simple File Sharing")
     print("="*60)
-    print(f"File: {os.path.basename(file_path)}")
-    print(f"Size: {os.path.getsize(file_path)} bytes")
+    print("Files to be shared:")
+    for file_path in file_paths:
+        print(f"  - {os.path.basename(file_path)} ({os.path.getsize(file_path)} bytes)")
     print("="*60 + "\n")
     
-    # Initialize OTP manager
-    otp_manager = OTPManager()
-    
-    # Set up handler with file and OTP manager
-    FileShareHandler.file_path = file_path
-    FileShareHandler.otp_manager = otp_manager
+    # Set up handler with file paths
+    FileShareHandler.file_paths = file_paths
     
     # Start HTTP server in a separate thread
     server = HTTPServer(('localhost', Config.LOCAL_PORT), FileShareHandler)
@@ -443,7 +316,7 @@ def main():
         sys.exit(1)
     
     # Generate and display QR code
-    generate_qr_code(tunnel.public_url, otp_manager.otp)
+    generate_qr_code(tunnel.public_url)
     
     print("[*] Server is running. Press Ctrl+C to stop.\n")
     
@@ -458,5 +331,4 @@ def main():
         print("[*] Server stopped. Goodbye!")
 
 
-if __name__ == '__main__':
-    main()
+main()
