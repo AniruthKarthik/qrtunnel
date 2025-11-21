@@ -1,2 +1,0 @@
-[console_scripts]
-shareqr = shareqr.qr:main

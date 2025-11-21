@@ -1,34 +1,25 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "shareqr"
-version = "0.0.2"
-authors = [
-  { name="Aniruth Karthik", email="aniruthkarthik10@gmail.com" },
-]
-description = "A simple tool to share files from the command line via a QR code."
+name = "qrtunnel"
+version = "1.1"
+description = "Cross-platform file sharing via SSH reverse tunneling and QR codes"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.6"
 license = "MIT"
-classifiers = [
-    "Development Status :: 4 - Beta",
-    "Environment :: Console",
-    "Intended Audience :: Developers",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Topic :: Utilities",
+authors = [
+    { name = "Ani", email = "ani@example.com" }
 ]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
 dependencies = [
     "qrcode[pil]",
 ]
 
-[project.urls]
-"Homepage" = "https://github.com/AniruthKarthik/shareqr"
-"Bug Tracker" = "https://github.com/AniruthKarthik/shareqr/issues"
-"PyPI" = "https://pypi.org/project/shareqr/"
-"AUR" = "https://aur.archlinux.org/packages/shareqr/"
-
 [project.scripts]
-shareqr = "shareqr.qr:main"
+qrtunnel = "qr:main"
