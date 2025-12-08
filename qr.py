@@ -956,6 +956,7 @@ def main():
     parser.add_argument('--setup', action='store_true', help='Set up or reconfigure ngrok authtoken')
     parser.add_argument('--status', action='store_true', help='Check authentication status')
     parser.add_argument('--noauth', action='store_true', help='Use SSH tunnel (localhost.run) without authentication (recommended for non-Windows)')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     
     args = parser.parse_args()
     

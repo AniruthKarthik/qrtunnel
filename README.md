@@ -5,6 +5,7 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
 ## Features
 
 *   **Simple File Sharing:** Share one or more files directly from your command line.
+*   **Receive Files:** Start in upload mode to receive files from any device with a web browser, like your phone.
 *   **Secure Tunnels:** Utilizes ngrok for secure, public HTTPS tunnels, even behind NATs and firewalls.
 *   **No-Auth Alternative:** For Mac/Linux users, an SSH-based tunnel (localhost.run) is available, requiring no ngrok account.
 *   **QR Code Display:** Generates a scannable QR code in your terminal for easy access on mobile devices.
@@ -25,7 +26,7 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
 
 ## Usage
 
-### Basic Sharing
+### Sharing Files (PC to Phone)
 
 To share one or more files:
 
@@ -39,6 +40,16 @@ python qr.py mydocument.pdf myimage.jpg
 ```
 
 This will start a local HTTP server, create a public tunnel (using ngrok by default), and display a QR code. Scan the QR code with your phone to access the files.
+
+### Receiving Files (Phone to PC)
+
+To receive files on your computer, simply run `qrtunnel` without any file paths:
+
+```bash
+python qr.py
+```
+
+This starts the server in upload mode. Scan the generated QR code on your phone, and you'll get a web page where you can select and upload a file to your computer.
 
 ### Ngrok Authentication Setup
 
@@ -67,7 +78,6 @@ python qr.py <file_path1> [<file_path2> ...] --noauth
 ```
 
 **Note:** This option is not supported on Windows.
-
 ### Quitting the Server
 
 The server will run until you press `q` in the terminal or use `Ctrl+C`.
