@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qrtunnel"
-version = "2.0.1"
+version = "2.1.1"
 description = "Cross-platform file sharing via QR code with ngrok and SSH tunneling"
 readme = "README.md"
 requires-python = ">=3.6"
@@ -25,7 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "qrcode[pil]",
+    "qrcode",
     "pyngrok",
     "streaming-form-data",
     "werkzeug"

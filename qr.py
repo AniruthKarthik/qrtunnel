@@ -4,10 +4,10 @@ qrtunnel: Simple cross-platform file sharing via QR code with ngrok authenticati
 Usage: qrtunnel <file_path1> [<file_path2> ...]
 
 Dependencies:
-    pip install pyngrok qrcode[pil]
+    pip install pyngrok qrcode streaming-form-data werkzeug
 """
 
-__version__ = "2.0.1"
+__version__ = "2.1.1"
 
 import os
 import sys
@@ -958,7 +958,7 @@ def generate_qr_code(url):
     except ImportError:
         print("\n" + "="*60)
         print("⚠️  QR code library not installed")
-        print("Install with: pip install qrcode[pil]")
+        print("Install with: pip install qrcode")
         print("="*60)
         print(f"\n🌐 URL: {url}")
         print("="*60 + "\n")

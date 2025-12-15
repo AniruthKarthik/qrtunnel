@@ -19,10 +19,11 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
     git clone https://github.com/AniruthKarthik/qrtunnel.git
     cd qrtunnel
     ```
-2.  **Install dependencies:**
+2.  **Install the package:**
     ```bash
-    pip install pyngrok qrcode[pil]
+    pip install .
     ```
+    This will install `qrtunnel` and all its dependencies.
 
 ## Usage
 
@@ -31,12 +32,12 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
 To share one or more files:
 
 ```bash
-python qr.py <file_path1> [<file_path2> ...]
+qrtunnel <file_path1> [<file_path2> ...]
 ```
 
 Example:
 ```bash
-python qr.py mydocument.pdf myimage.jpg
+qrtunnel mydocument.pdf myimage.jpg
 ```
 
 This will start a local HTTP server, create a public tunnel (using ngrok by default), and display a QR code. Scan the QR code with your phone to access the files.
@@ -46,7 +47,7 @@ This will start a local HTTP server, create a public tunnel (using ngrok by defa
 To receive files on your computer, simply run `qrtunnel` without any file paths:
 
 ```bash
-python qr.py
+qrtunnel
 ```
 
 This starts the server in upload mode. Scan the generated QR code on your phone, and you'll get a web page where you can select and upload a file to your computer.
@@ -56,7 +57,7 @@ This starts the server in upload mode. Scan the generated QR code on your phone,
 `qrtunnel` uses ngrok for reliable public tunnels. The first time you use it, or if you need to update your token, you'll be prompted to set up your ngrok authtoken. You can also do this manually:
 
 ```bash
-python qr.py --setup
+qrtunnel --setup
 ```
 
 Follow the on-screen instructions to get and save your ngrok authtoken.
@@ -66,7 +67,7 @@ Follow the on-screen instructions to get and save your ngrok authtoken.
 To check if your ngrok authtoken is configured:
 
 ```bash
-python qr.py --status
+qrtunnel --status
 ```
 
 ### No-Auth Sharing (Mac/Linux Only)
@@ -74,7 +75,7 @@ python qr.py --status
 If you're on Mac or Linux and prefer not to use an ngrok account, you can use the `--noauth` flag. This will attempt to create an SSH tunnel via `localhost.run`.
 
 ```bash
-python qr.py <file_path1> [<file_path2> ...] --noauth
+qrtunnel <file_path1> [<file_path2> ...] --noauth
 ```
 
 **Note:** This option is not supported on Windows.
