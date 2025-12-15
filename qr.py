@@ -19,13 +19,18 @@ import subprocess
 import re
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, unquote
 from pathlib import Path
+from socketserver import ThreadingMixIn
 from werkzeug.wsgi import LimitedStream
 from streaming_form_data import StreamingFormDataParser
 from streaming_form_data.targets import FileTarget
 import time
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
+    daemon_threads = True
 
 
 def getch():
@@ -528,7 +533,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             with open(target_path, 'rb') as f:
                 try:
                     while True:
-                        chunk = f.read(256 * 1024)
+                        chunk = f.read(1024 * 1024)
                         if not chunk:
                             break
                         self.wfile.write(chunk)
@@ -1063,7 +1068,7 @@ def main():
     
     # Start HTTP server
     try:
-        server = HTTPServer(('localhost', Config.LOCAL_PORT), FileTransferHandler)
+        server = ThreadingHTTPServer(('localhost', Config.LOCAL_PORT), FileTransferHandler)
     except OSError as e:
         print(f"\n✗ Error: Could not bind to port {Config.LOCAL_PORT}")
         print(f"   {e}")
