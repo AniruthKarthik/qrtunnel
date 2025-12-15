@@ -21,7 +21,7 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
     ```
 2.  **Install the package:**
     ```bash
-    pip install .
+    pip install qrtunnel
     ```
     This will install `qrtunnel` and all its dependencies.
 
