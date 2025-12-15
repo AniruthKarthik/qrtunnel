@@ -531,14 +531,22 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
             with open(target_path, 'rb') as f:
-                try:
-                    while True:
-                        chunk = f.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                except BrokenPipeError:
-                    print(f"✗ Client disconnected during transfer of '{filename}'")
+                if platform.system() == 'Linux' and hasattr(os, 'sendfile'):
+                    try:
+                        sent = 0
+                        while sent < file_size:
+                            sent += os.sendfile(self.connection.fileno(), f.fileno(), sent, file_size - sent)
+                    except BrokenPipeError:
+                        print(f"✗ Client disconnected during transfer of '{filename}'")
+                else:
+                    try:
+                        while True:
+                            chunk = f.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                    except BrokenPipeError:
+                        print(f"✗ Client disconnected during transfer of '{filename}'")
             
             print(f"✓ File '{filename}' served to {self.client_address[0]}")
         except Exception as e:
