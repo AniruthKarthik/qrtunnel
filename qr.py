@@ -7,7 +7,7 @@ Usage: qrtunnel <file_path1> [<file_path2> ...]
        qrtunnel (for upload mode)
 """
 
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 
 import os
 import sys
@@ -18,6 +18,7 @@ import platform
 import subprocess
 import re
 import json
+import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, unquote
 from pathlib import Path
@@ -62,6 +63,24 @@ class Config:
     LOCAL_PORT = 8000
     CONFIG_DIR = Path.home() / ".qrtunnel"
     CONFIG_FILE = CONFIG_DIR / "config.json"
+
+
+def get_lan_ip():
+    """Get the primary LAN IP address of the host."""
+    try:
+        # Create a dummy socket to determine the preferred interface
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Doesn't need to be reachable, just needs to be a public IP
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        # Fallback to hostname-based detection
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return None
 
 
 
@@ -509,8 +528,26 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(html.encode())
 
+    def parse_range_header(self, file_size):
+        """Parse the Range header if present."""
+        range_header = self.headers.get('Range')
+        if not range_header:
+            return None
+        
+        match = re.match(r'bytes=(\d+)-(\d+)?', range_header)
+        if not match:
+            return None
+        
+        start = int(match.group(1))
+        end = int(match.group(2)) if match.group(2) else file_size - 1
+        
+        if start >= file_size or (end is not None and start > end):
+            return False  # Invalid range
+            
+        return start, min(end, file_size - 1)
+
     def serve_single_file(self, filename):
-        """Serve a single file for download"""
+        """Serve a single file for download with support for Range requests"""
         # Find the full path for the requested filename
         target_path = None
         for file_path in self.file_paths:
@@ -524,36 +561,66 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
         try:
             file_size = os.path.getsize(target_path)
-            self.send_response(200)
+            range_req = self.parse_range_header(file_size)
+            
+            if range_req is False:
+                self.send_error(416, "Requested Range Not Satisfiable")
+                return
+
+            if range_req:
+                start, end = range_req
+                content_length = end - start + 1
+                self.send_response(206)
+                self.send_header('Content-Range', f'bytes {start}-{end}/{file_size}')
+            else:
+                start = 0
+                end = file_size - 1
+                content_length = file_size
+                self.send_response(200)
+
             self.send_header('Content-type', 'application/octet-stream')
             self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-            self.send_header('Content-Length', str(file_size))
+            self.send_header('Content-Length', str(content_length))
+            self.send_header('Accept-Ranges', 'bytes')
             self.end_headers()
 
             with open(target_path, 'rb') as f:
+                if start > 0:
+                    f.seek(start)
+                
                 if platform.system() == 'Linux' and hasattr(os, 'sendfile'):
                     try:
                         sent = 0
-                        while sent < file_size:
-                            sent += os.sendfile(self.connection.fileno(), f.fileno(), sent, file_size - sent)
+                        while sent < content_length:
+                            # os.sendfile(out_fd, in_fd, offset, count)
+                            # offset is the absolute offset in the file
+                            n = os.sendfile(self.connection.fileno(), f.fileno(), start + sent, content_length - sent)
+                            if n == 0: break # EOF or other issue
+                            sent += n
                     except BrokenPipeError:
                         print(f"✗ Client disconnected during transfer of '{filename}'")
                 else:
                     try:
-                        while True:
-                            chunk = f.read(1024 * 1024)
+                        remaining = content_length
+                        chunk_size = 1024 * 1024 # 1MB
+                        while remaining > 0:
+                            chunk = f.read(min(chunk_size, remaining))
                             if not chunk:
                                 break
                             self.wfile.write(chunk)
+                            remaining -= len(chunk)
                     except BrokenPipeError:
                         print(f"✗ Client disconnected during transfer of '{filename}'")
             
-            print(f"✓ File '{filename}' served to {self.client_address[0]}")
+            if not range_req or (range_req and end == file_size - 1):
+                print(f"✓ File '{filename}' served to {self.client_address[0]}")
         except Exception as e:
             # Don't send another error if it's a broken pipe, as the connection is already gone
             if not isinstance(e, BrokenPipeError) and "Broken pipe" not in str(e):
                 print(f"✗ Error serving file '{filename}': {e}")
-                self.send_error(500, "Internal Server Error")
+                if not self.wfile.closed:
+                    try: self.send_error(500, "Internal Server Error")
+                    except: pass
 
 
 class NgrokAuth:
@@ -878,18 +945,69 @@ class SSHTunnel:
             print("\n[*] SSH tunnel closed")
 
 
+class LanServer:
+    """Manages high-speed LAN file sharing"""
+    
+    def __init__(self, local_port):
+        self.local_port = local_port
+        self.public_url = None
+        self.ip = None
+        self.name = "LAN"
+        
+    def start(self):
+        """Detect LAN IP and prepare the URL"""
+        print(f"\n[*] Starting LAN mode...")
+        self.ip = get_lan_ip()
+        
+        if not self.ip:
+            print("✗ Error: Could not detect LAN IP address.")
+            print("  Make sure you are connected to a Wi-Fi or local network.")
+            return False
+        
+        if self.ip.startswith("127."):
+            print("\n" + "!"*60)
+            print("⚠️  WARNING: NO LAN IP DETECTED")
+            print("!"*60)
+            print("Only loopback IP (127.0.0.1) was found.")
+            print("Other devices on your Wi-Fi will NOT be able to connect.")
+            print("Please check your network connection.")
+            print("!"*60 + "\n")
+            
+        self.public_url = f"http://{self.ip}:{self.local_port}"
+        print(f"✓ LAN server active: {self.public_url}")
+        return True
+
+    def stop(self):
+        """Stop LAN server (placeholder)"""
+        pass
+
+
 class TunnelManager:
     """Manages tunnel services"""
     
-    def __init__(self, local_port, noauth=False):
+    def __init__(self, local_port, noauth=False, lan=False):
         self.local_port = local_port
         self.active_tunnel = None
         self.public_url = None
         self.auth_manager = NgrokAuth()
         self.noauth = noauth
+        self.lan = lan
         
     def start(self):
         """Start tunnel based on mode"""
+        if self.lan:
+            print("\n" + "="*60)
+            print("LAN MODE ACTIVE")
+            print("="*60)
+            lan_server = LanServer(self.local_port)
+            if lan_server.start():
+                self.active_tunnel = lan_server
+                self.public_url = lan_server.public_url
+                print("="*60)
+                return True
+            print("="*60)
+            return False
+
         print("\n" + "="*60)
         print("ESTABLISHING PUBLIC TUNNEL")
         print("="*60)
@@ -985,6 +1103,7 @@ def main():
     parser.add_argument('--status', action='store_true', help='Check authentication status')
     parser.add_argument('--ngrok', action='store_true', help='Use ngrok for tunneling (Default on Windows)')
     parser.add_argument('--noauth', action='store_true', help='Use SSH tunnel (localhost.run) (Default on Linux/macOS)')
+    parser.add_argument('--lan', action='store_true', help='Use local network (Wi-Fi) sharing instead of tunneling')
     parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
     
     args = parser.parse_args()
@@ -1060,7 +1179,9 @@ def main():
     else:
         print("Mode: Download (share files)")
 
-    if noauth_mode:
+    if args.lan:
+        print("Tunnel: LAN (high-speed local network)")
+    elif noauth_mode:
         print("Tunnel: No-auth (SSH via localhost.run)")
     else:
         print("Tunnel: ngrok (authenticated)")
@@ -1082,8 +1203,10 @@ def main():
     FileTransferHandler.upload_mode = upload_mode
     
     # Start HTTP server
+    # We bind to 0.0.0.0 in LAN mode to be accessible from other devices
+    bind_address = '0.0.0.0' if args.lan else 'localhost'
     try:
-        server = ThreadingHTTPServer(('localhost', Config.LOCAL_PORT), FileTransferHandler)
+        server = ThreadingHTTPServer((bind_address, Config.LOCAL_PORT), FileTransferHandler)
     except OSError as e:
         print(f"\n✗ Error: Could not bind to port {Config.LOCAL_PORT}")
         print(f"   {e}")
@@ -1091,10 +1214,14 @@ def main():
     
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
-    print(f"\n✓ HTTP server started on localhost:{Config.LOCAL_PORT}")
+    
+    if args.lan:
+        print(f"\n✓ HTTP server started on all interfaces (port {Config.LOCAL_PORT})")
+    else:
+        print(f"\n✓ HTTP server started on localhost:{Config.LOCAL_PORT}")
     
     # Start tunnel
-    tunnel_manager = TunnelManager(Config.LOCAL_PORT, noauth=noauth_mode)
+    tunnel_manager = TunnelManager(Config.LOCAL_PORT, noauth=noauth_mode, lan=args.lan)
     
     if not tunnel_manager.start():
         server.shutdown()

@@ -1,0 +1,11 @@
+MarkupSafe==3.0.3
+pyngrok==7.5.0
+PyYAML==6.0.3
+qrcode==8.2
+qrtunnel==2.2.0
+smart_open==7.5.0
+stencil-ui==0.2.6
+streaming-form-data==1.19.1
+watchdog==6.0.0
+Werkzeug==3.1.4
+wrapt==2.0.1

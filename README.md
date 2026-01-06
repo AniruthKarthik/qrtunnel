@@ -6,6 +6,7 @@ Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows shari
 
 *   **Simple File Sharing:** Share one or more files directly from your command line.
 *   **Receive Files:** Start in upload mode to receive files from any device with a web browser, like your phone.
+*   **High-Speed LAN Sharing:** Use the `--lan` flag to share files directly over your local Wi-Fi/network at maximum speed, bypassing the internet.
 *   **Secure Tunnels:** Supports both **SSH Tunneling** (default on Linux/macOS) and **ngrok** (default on Windows) for secure, public access even behind NATs/firewalls.
 *   **SSH Tunneling:** Default on Linux/macOS! Uses `localhost.run` for instant tunneling without any account or sign-up.
 *   **Ngrok Support:** Reliable tunneling via ngrok (requires free account), available on all platforms and default on Windows.
@@ -46,6 +47,20 @@ This will start a local HTTP server and create a public tunnel.
 *   **Windows:** Defaults to **ngrok** (requires account setup).
 
 Scan the QR code with your phone to access the files.
+
+### High-Speed LAN Sharing (Wi-Fi Mode)
+
+If you and the recipient device are on the same Wi-Fi or local network, you can use the `--lan` flag. This is significantly faster than tunneling because data never leaves your local network.
+
+```bash
+qrtunnel <file_path1> --lan
+```
+
+**Benefits of LAN mode:**
+*   **Maximum Speed:** Limited only by your router/network hardware (perfect for 10GB+ files).
+*   **Privacy:** Data stays within your local network.
+*   **Resumable:** Supports high-speed resumable downloads.
+*   **Zero-Copy:** Uses optimized OS-level file streaming for minimum CPU usage.
 
 ### Receiving Files (Phone to PC)
 
