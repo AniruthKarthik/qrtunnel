@@ -12,7 +12,7 @@ Smart Mode Limitations:
 - VPNs: Active VPNs may interfere with LAN IP detection or routing.
 """
 
-__version__ = "4.0.0"
+__version__ = "3.5.0"
 
 import os
 import sys
@@ -27,6 +27,7 @@ import ipaddress
 import random
 import uuid
 import http.cookies
+import argparse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, unquote
 from pathlib import Path
@@ -37,16 +38,16 @@ from streaming_form_data.targets import FileTarget
 
 
 # ─────────────────────────────────────────────────────────
-#  TERMINAL COLOURS & ICONS
+#  TERMINAL COLOURS & ICONS (Neat Palette)
 # ─────────────────────────────────────────────────────────
-CLR_G   = "\033[92m"   # Green
-CLR_Y   = "\033[93m"   # Yellow
-CLR_R   = "\033[91m"   # Red
-CLR_B   = "\033[94m"   # Blue
-CLR_C   = "\033[96m"   # Cyan
-CLR_M   = "\033[95m"   # Magenta
-CLR_W   = "\033[97m"   # Bright White
-CLR_DIM = "\033[2m"    # Dim
+CLR_G   = "\033[32m"   # Standard Green (Success/Selected)
+CLR_Y   = "\033[93m"   # Bright Yellow (Warnings/Focus)
+CLR_R   = "\033[31m"   # Standard Red (Errors)
+CLR_B   = "\033[34m"   # Standard Blue (Info)
+CLR_C   = "\033[36m"   # Standard Cyan (Directories)
+CLR_M   = "\033[35m"   # Standard Magenta (Headers)
+CLR_W   = "\033[37m"   # Standard White
+CLR_DIM = "\033[90m"   # Bright Black (Grey)
 CLR_BLD = "\033[1m"    # Bold
 CLR_RST = "\033[0m"    # Reset
 HIDE_CURSOR = "\033[?25l"
@@ -1137,12 +1138,14 @@ def _top_bar():
     ]
 
 
-def _nav_hint(back=True, fwd=True):
+def _nav_hint(back=True, fwd=True, search=False):
     """Small navigation hint line."""
     parts = []
-    if back:  parts.append(f"{CLR_DIM}← back{CLR_RST}")
-    if fwd:   parts.append(f"{CLR_DIM}→ proceed{CLR_RST}")
+    if back:   parts.append(f"{CLR_DIM}← back{CLR_RST}")
+    if fwd:    parts.append(f"{CLR_DIM}→ proceed{CLR_RST}")
     parts.append(f"{CLR_DIM}↑↓ move{CLR_RST}")
+    if search: parts.append(f"{CLR_C}/ search{CLR_RST}")
+    parts.append(f"{CLR_R}q quit{CLR_RST}")
     return "  " + "   ".join(parts)
 
 
@@ -1175,12 +1178,18 @@ def _list_dir(path):
     return dirs, files
 
 
-def draw_files(cursor, cwd, selected_files, scroll_offset):
+def draw_files(cursor, cwd, selected_files, scroll_offset, search_query="", is_searching=False):
     dirs, files = _list_dir(cwd)
+
+    # Filter
+    if search_query:
+        q = search_query.lower()
+        dirs  = [d for d in dirs if q in d.lower()]
+        files = [f for f in files if q in f.lower()]
 
     # build item list: [.. ] then dirs then files
     items = []                          # (display_str,  full_path, kind)
-    if cwd != os.path.abspath(os.sep):  # not filesystem root
+    if cwd != os.path.abspath(os.sep) and not search_query:  # Hide '..' during search
         items.append(("  ..", None, "back"))
     for d in dirs:
         items.append((f"  {d}/", os.path.join(cwd, d), "dir"))
@@ -1190,13 +1199,32 @@ def draw_files(cursor, cwd, selected_files, scroll_offset):
 
     # viewport
     max_visible = 18
+    if cursor >= len(items): cursor = len(items) - 1
+    if cursor < 0: cursor = 0
+    
+    # Auto-scroll
+    if cursor < scroll_offset:
+        scroll_offset = cursor
+    elif cursor >= scroll_offset + max_visible:
+        scroll_offset = cursor - max_visible + 1
+
     visible_start = scroll_offset
     visible_end   = min(len(items), scroll_offset + max_visible)
 
     lines = _top_bar()
-    lines.append(f"  {CLR_C}{CLR_BLD}Select files to send{CLR_RST}")
+    lines.append(f"  {CLR_M}{CLR_BLD}Select files to send{CLR_RST}")
     lines.append(f"  {CLR_DIM}{cwd}{CLR_RST}")
-    lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
+    
+    # Search Bar
+    if is_searching or search_query:
+        prefix = "/" if is_searching else "Search:"
+        cursor_char = "█" if is_searching else ""
+        lines.append(f"  {CLR_Y}{prefix} {search_query}{cursor_char}{CLR_RST}")
+    else:
+        lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
+
+    if not items and search_query:
+         lines.append(f"  {CLR_DIM}(No matches found){CLR_RST}")
 
     for idx in range(visible_start, visible_end):
         label, full, kind = items[idx]
@@ -1213,19 +1241,19 @@ def draw_files(cursor, cwd, selected_files, scroll_offset):
             if is_cursor:
                 lines.append(f"  {CLR_C}{CLR_BLD}▸ {dname}/{CLR_RST}")
             else:
-                lines.append(f"  {CLR_DIM}  {dname}/{CLR_RST}")
+                lines.append(f"  {CLR_C}  {dname}/{CLR_RST}")
         else:  # file
             fname = os.path.basename(full)
             size  = format_size(os.path.getsize(full))
             is_sel = full in selected_files
-            if is_sel and is_cursor:
-                lines.append(f"  {CLR_G}{CLR_BLD}▸ [x] {fname}{CLR_RST}  {CLR_DIM}{size}{CLR_RST}")
-            elif is_sel:
-                lines.append(f"    {CLR_G}[x] {fname}{CLR_RST}  {CLR_DIM}{size}{CLR_RST}")
-            elif is_cursor:
-                lines.append(f"  {CLR_W}{CLR_BLD}▸ [ ] {fname}{CLR_RST}  {CLR_DIM}{size}{CLR_RST}")
+            
+            # Selection marker
+            mark = f"{CLR_G}[x]{CLR_RST}" if is_sel else f"{CLR_DIM}[ ]{CLR_RST}"
+            
+            if is_cursor:
+                lines.append(f"  {CLR_W}{CLR_BLD}▸ {mark} {fname}{CLR_RST}  {CLR_DIM}{size}{CLR_RST}")
             else:
-                lines.append(f"  {CLR_DIM}  [ ] {fname}  {size}{CLR_RST}")
+                lines.append(f"    {mark} {fname}  {CLR_DIM}{size}{CLR_RST}")
 
     # scroll indicator
     if len(items) > max_visible:
@@ -1238,10 +1266,10 @@ def draw_files(cursor, cwd, selected_files, scroll_offset):
         total = sum(os.path.getsize(f) for f in selected_files)
         lines.append(f"  {CLR_G}Selected: {len(selected_files)} file(s)  •  {format_size(total)}{CLR_RST}")
     else:
-        lines.append(f"  {CLR_DIM}No files selected  –  Space to toggle{CLR_RST}")
+        lines.append(f"  {CLR_DIM}No files selected{CLR_RST}")
 
-    lines.append(_nav_hint(back=True, fwd=True))
-    lines.append(f"  {CLR_DIM}Space/Enter = toggle   Enter on dir = open   → = next (needs selection){CLR_RST}")
+    lines.append(_nav_hint(back=True, fwd=True, search=True))
+    lines.append(f"  {CLR_DIM}Space/Enter = toggle   Enter on dir = open{CLR_RST}")
     lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
     return lines, items
 
@@ -1256,7 +1284,7 @@ MODE_OPTIONS = [
 
 def draw_mode(cursor):
     lines = _top_bar()
-    lines.append(f"  {CLR_M}{CLR_BLD}Select tunnel mode{CLR_RST}")
+    lines.append(f"  {CLR_C}{CLR_BLD}Select tunnel mode{CLR_RST}")
     lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
     for i, (name, desc) in enumerate(MODE_OPTIONS):
         if i == cursor:
@@ -1370,6 +1398,10 @@ def run_tui():
     custom_port   = ""          # live typed string
     custom_port_editing = False # are we typing?
     file_scroll   = 0
+    
+    # Search state
+    search_query  = ""
+    is_searching  = False
 
     # for RECEIVE we skip the file-picker so we remember where to resume
     # history stack: each push records (screen_id, cursor) so ← pops cleanly
@@ -1388,7 +1420,8 @@ def run_tui():
                     render(draw_main(cursor))
     
                 elif screen == SCR_FILES:
-                    lines, items = draw_files(cursor, cwd, selected_files, file_scroll)
+                    # Pass search state to draw_files
+                    lines, items = draw_files(cursor, cwd, selected_files, file_scroll, search_query, is_searching)
                     render(lines)
     
                 elif screen == SCR_MODE:
@@ -1407,6 +1440,10 @@ def run_tui():
                 if key is None:
                     continue
                 if key == 'CTRL_C':
+                    return None
+                    
+                # Global Quit (only if not typing text)
+                if key == 'q' and not custom_port_editing and not is_searching:
                     return None
     
                 # ── HANDLE PER-SCREEN ──
@@ -1432,9 +1469,30 @@ def run_tui():
                             return None
     
                 elif screen == SCR_FILES:
-                    _, items = draw_files(cursor, cwd, selected_files, file_scroll)
+                    # Search Input Handling
+                    if is_searching:
+                        if key == 'ESC':
+                            is_searching = False
+                            search_query = ""
+                        elif key == 'ENTER':
+                            is_searching = False
+                        elif key == 'BACKSPACE':
+                            search_query = search_query[:-1]
+                        elif len(key) == 1 and key.isprintable():
+                            search_query += key
+                            # Reset cursor/scroll on typing
+                            cursor = 0
+                            file_scroll = 0
+                        continue
+
+                    # Normal Navigation
+                    _, items = draw_files(cursor, cwd, selected_files, file_scroll, search_query, is_searching)
                     total_items = len(items)
-    
+                    
+                    if key == '/':  # Enter Search Mode
+                        is_searching = True
+                        continue
+
                     if key == 'DOWN':
                         if cursor < total_items - 1:
                             cursor += 1
@@ -1446,9 +1504,14 @@ def run_tui():
                             if cursor < file_scroll:
                                 file_scroll -= 1
                     elif key == 'LEFT':                      # ← back to main
-                        scr, cur = history.pop() if history else (SCR_MAIN, 0)
-                        screen = scr
-                        cursor = cur
+                        if search_query: # Clear search first if active
+                            search_query = ""
+                            cursor = 0
+                            file_scroll = 0
+                        else:
+                            scr, cur = history.pop() if history else (SCR_MAIN, 0)
+                            screen = scr
+                            cursor = cur
                     elif key == 'SPACE':                     # toggle file
                         if cursor < total_items:
                             _, full, kind = items[cursor]
@@ -1464,10 +1527,12 @@ def run_tui():
                                 cwd = os.path.dirname(cwd)
                                 cursor = 0
                                 file_scroll = 0
+                                search_query = "" # reset search on dir change
                             elif kind == "dir":
                                 cwd = full
                                 cursor = 0
                                 file_scroll = 0
+                                search_query = "" # reset search on dir change
                             else:   # file – toggle selection
                                 if full in selected_files:
                                     selected_files.remove(full)
@@ -1693,21 +1758,155 @@ def launch_server(is_send, file_paths, mode_name, port):
 # ─────────────────────────────────────────────────────────
 #  ENTRY POINT
 # ─────────────────────────────────────────────────────────
+def parse_args():
+    """Parse command line arguments, handling the custom port syntax."""
+    # 1. Custom Port Pre-processing (e.g., -8080 or --6969)
+    argv = sys.argv[1:]
+    port = 6969  # Default port
+    clean_argv = []
+    
+    port_found = False
+    for arg in argv:
+        # Match -1234 or --1234
+        if re.match(r'^--?\d{2,5}$', arg):
+            try:
+                p = int(arg.lstrip('-'))
+                if 1 <= p <= 65535:
+                    port = p
+                    port_found = True
+                    continue
+            except ValueError:
+                pass
+        clean_argv.append(arg)
+
+    # If no args at all (and no port was just stripped), return None to trigger TUI
+    if not clean_argv and not port_found:
+        return None, None
+
+    # 2. Argparse Setup
+    parser = argparse.ArgumentParser(
+        description="qrtunnel: Elegant cross-platform file sharing via QR code.",
+        usage="%(prog)s [send|receive] [files/dir] [options] [-PORT]",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  qrtunnel                        # Start interactive TUI (default)
+  qrtunnel send photo.jpg         # Share a file using Smart Mode
+  qrtunnel send docs/ -lan -8080  # Share directory on LAN using port 8080
+  qrtunnel receive ./uploads      # Receive files into a specific folder
+  qrtunnel receive -ngrok         # Receive files via ngrok tunnel
+"""
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # SEND command
+    p_send = subparsers.add_parser("send", help="Share files or directories with others")
+    p_send.add_argument("files", nargs="+", help="Path to files or folders to share")
+    
+    # RECEIVE command
+    p_recv = subparsers.add_parser("receive", help="Receive files from others")
+    p_recv.add_argument("dest", nargs="?", default=".", help="Directory to save received files (default: current)")
+
+    # Global Options
+    for p in [p_send, p_recv]:
+        g = p.add_argument_group("Tunneling Options")
+        m = g.add_mutually_exclusive_group()
+        m.add_argument("-smart", action="store_true", help="Smart Mode: LAN + Public Tunnel (Auto fallback)")
+        m.add_argument("-lan",   action="store_true", help="LAN Only: Fast local transfer (same Wi-Fi)")
+        m.add_argument("-ssh",   action="store_true", help="SSH Tunnel: No-auth public link (localhost.run)")
+        m.add_argument("-ngrok", action="store_true", help="Ngrok Tunnel: Secure public link (requires account)")
+        
+        p.add_argument("--port", "-p", type=int, help="Specify port manually (e.g. -p 8080)")
+        p.add_argument("-v", "--version", action="version", version=f"qrtunnel {__version__}")
+
+    # 3. Parse
+    if not clean_argv:
+        # If user typed just "-8080", we technically have a port but no command. 
+        # We can't infer send/receive. Default to TUI or Error? 
+        # Let's print help.
+        print(f"{ERR} Please specify 'send' or 'receive' command.")
+        return None, None
+
+    args = parser.parse_args(clean_argv)
+    
+    # Override port if explicitly set via --port
+    if args.port:
+        port = args.port
+
+    return args, port
+
+
 def main():
-    result = run_tui()
-    if result is None:
-        print("\n[*] Exited. Goodbye!\n")
+    args, cli_port = parse_args()
+
+    # ── TUI MODE ──
+    if args is None:
+        result = run_tui()
+        if result is None:
+            print("\n[*] Exited. Goodbye!\n")
+            sys.exit(0)
+        is_send, file_paths, mode_name, port = result
+        
+        # TUI already confirms, so we just launch
+        if is_send and not file_paths:
+            sys.stdout.write(CLEAR)
+            print(f"\n{ERR} No files selected. Please re-run and select at least one file.\n")
+            sys.exit(1)
+        launch_server(is_send, file_paths, mode_name, port)
+        return
+
+    # ── CLI MODE ──
+    is_send = (args.command == "send")
+    
+    if is_send:
+        file_paths = [os.path.abspath(f) for f in args.files]
+        for f in file_paths:
+            if not os.path.exists(f):
+                print(f"{ERR} File not found: {f}")
+                sys.exit(1)
+    else:
+        # Receive mode
+        target_dir = os.path.abspath(args.dest)
+        if not os.path.isdir(target_dir):
+            print(f"{ERR} Destination is not a directory: {target_dir}")
+            sys.exit(1)
+        os.chdir(target_dir) # Switch to dest dir for receiving
+        file_paths = [] 
+
+    # Determine Mode
+    mode_name = "Smart"
+    if args.lan:   mode_name = "LAN"
+    elif args.ssh: mode_name = "SSH"
+    elif args.ngrok: mode_name = "Ngrok"
+
+    # Confirmation
+    print("\n" + "=" * 60)
+    print(f"  {CLR_B}{CLR_BLD}qrtunnel CLI{CLR_RST}")
+    print("=" * 60)
+    print(f"  Direction  : {CLR_G if is_send else CLR_C}{'SEND' if is_send else 'RECEIVE'}{CLR_RST}")
+    print(f"  Mode       : {CLR_M}{mode_name}{CLR_RST}")
+    print(f"  Port       : {CLR_Y}{cli_port}{CLR_RST}")
+    
+    if is_send:
+        print(f"  Files ({len(file_paths)}):")
+        for f in file_paths[:5]:
+            print(f"    - {os.path.basename(f)}")
+        if len(file_paths) > 5:
+            print(f"    ... and {len(file_paths)-5} more")
+    else:
+        print(f"  Save to    : {os.getcwd()}")
+    print("=" * 60)
+
+    try:
+        ans = input(f"\nProceed? [Y/n] ").strip().lower()
+        if ans not in ('', 'y', 'yes'):
+            print("\n[*] Cancelled.")
+            sys.exit(0)
+    except KeyboardInterrupt:
+        print("\n\n[*] Cancelled.")
         sys.exit(0)
 
-    is_send, file_paths, mode_name, port = result
-
-    # validate SEND requires at least one file
-    if is_send and not file_paths:
-        sys.stdout.write(CLEAR)
-        print(f"\n{ERR} No files selected. Please re-run and select at least one file.\n")
-        sys.exit(1)
-
-    launch_server(is_send, file_paths, mode_name, port)
+    launch_server(is_send, file_paths, mode_name, cli_port)
 
 
 if __name__ == '__main__':
