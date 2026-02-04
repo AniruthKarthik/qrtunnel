@@ -81,9 +81,10 @@ def _read_key_unix():
 
     try:
         if is_canonical:
-            # Switch to raw mode temporarily
+            # Switch to cbreak mode temporarily (raw input, but processed output)
+            # This prevents "staircase" printing when other threads print to stdout
             old = termios.tcgetattr(fd)
-            tty.setraw(fd, termios.TCSADRAIN)
+            tty.setcbreak(fd, termios.TCSADRAIN)
         
         # Select on the FILE DESCRIPTOR, not the sys.stdin object
         if not select.select([fd], [], [], 0.15)[0]:
@@ -398,14 +399,29 @@ h2 {{ margin-top: 0; }}
     # ── logging ──
     def log_message(self, format, *args):
         client_ip = self.client_address[0]
-        is_local  = client_ip in ("127.0.0.1", "::1")
-        if is_local or (self.server_lan_ip and is_same_lan(client_ip, self.server_lan_ip)):
-            conn_type = f"{OK} LAN"
-        else:
+        
+        # Check for forwarded IP (tunnels)
+        forwarded_for = self.headers.get('X-Forwarded-For')
+        if forwarded_for:
+            # X-Forwarded-For can be a list, take the first one
+            real_ip = forwarded_for.split(',')[0].strip()
             conn_type = f"{INFO} Tunnel"
+            display_ip = real_ip
+        else:
+            is_local = client_ip in ("127.0.0.1", "::1")
+            if is_local:
+                conn_type = f"{OK} Local"
+                display_ip = "localhost"
+            elif self.server_lan_ip and is_same_lan(client_ip, self.server_lan_ip):
+                conn_type = f"{OK} LAN"
+                display_ip = client_ip
+            else:
+                conn_type = f"{INFO} Tunnel"
+                display_ip = client_ip
+
         path = self.path
         if "/download/" in path or "/upload" in path or path == "/":
-            print(f"[*] {conn_type} request from {client_ip}: {path}")
+            print(f"\r[*] {conn_type} request from {display_ip}: {path}")
 
     # ── routing ──
     def do_GET(self):

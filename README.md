@@ -2,20 +2,22 @@
 
 Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows sharing files with mobile devices anywhere in the world, even behind NAT/firewalls.
 
+Now featuring a **new interactive Terminal User Interface (TUI)** for easier navigation!
+
 ## Features
 
+*   **Interactive TUI:** A beautiful, easy-to-use terminal interface to select files, choose modes, and configure ports using arrow keys.
 *   **Simple File Sharing:** Share one or more files directly from your command line.
-*   **Receive Files:** Start in upload mode to receive files from any device with a web browser, like your phone.
-*   **High-Speed LAN Sharing:** Use the `--lan` flag to share files directly over your local Wi-Fi/network at maximum speed, bypassing the internet.
-*   **Smart Auto-Detection:** Automatically detects if the recipient is on the same Wi-Fi and switches to high-speed LAN transfer instantly, bypassing the tunnel.
+*   **Receive Files:** Start in upload mode to receive files from any device with a web browser.
+*   **Smart Mode:** Automatically provides both a global Internet link and a high-speed LAN link. The client device auto-detects if it's on the same Wi-Fi and switches to maximum speed.
+*   **High-Speed LAN Sharing:** Use the `--lan` flag (or select LAN in TUI) to share files directly over your local network, keeping data private and fast.
 *   **LAN Security (OTP):** High-speed LAN transfers are protected by a random 6-digit passcode displayed only on your terminal.
-*   **Randomized Port:** Every run uses a different random port (20000-60000) for security and to prevent port conflicts.
-*   **Secure Tunnels:** Supports both **SSH Tunneling** (default on Linux/macOS) and **ngrok** (default on Windows) for secure, public access even behind NATs/firewalls.
-*   **SSH Tunneling:** Default on Linux/macOS! Uses `localhost.run` for instant tunneling without any account or sign-up.
-*   **Ngrok Support:** Reliable tunneling via ngrok (requires free account), available on all platforms and default on Windows.
+*   **Randomized & Custom Ports:** Defaults to a random port (20000-60000) for security, or choose your own custom port.
+*   **Secure Tunnels:** Supports both **SSH Tunneling** (default on Linux/macOS) and **ngrok** (default on Windows) for secure, public access.
+    *   **SSH Tunneling:** Uses `localhost.run` for instant tunneling without any account or sign-up.
+    *   **Ngrok Support:** Reliable tunneling via ngrok (requires free account).
 *   **QR Code Display:** Generates a scannable QR code in your terminal for easy access on mobile devices.
-*   **Web Interface:** Provides a simple web page for recipients to download shared files, individually or as a ZIP archive.
-*   **Ngrok Authtoken Management:** Interactive setup and status check for your ngrok authentication token.
+*   **Web Interface:** Provides a simple web page for recipients to download shared files or upload files to you.
 
 ## Installation
 
@@ -27,88 +29,71 @@ This will install `qrtunnel` and all its dependencies.
 
 ## Usage
 
-### Sharing Files (PC to Phone)
+### 1. Interactive Mode (TUI)
 
-To share one or more files:
-
-```bash
-qrtunnel <file_path1> [<file_path2> ...]
-```
-
-Example:
-```bash
-qrtunnel mydocument.pdf myimage.jpg
-```
-
-This will start a local HTTP server and create a public tunnel.
-*   **Linux/macOS:** Defaults to **SSH tunneling** (no account needed).
-*   **Windows:** Defaults to **ngrok** (requires account setup).
-
-Scan the QR code with your phone to access the files.
-
-### High-Speed LAN Sharing (Wi-Fi Mode)
-
-If you and the recipient device are on the same Wi-Fi or local network, you can use the `--lan` flag. This is significantly faster than tunneling because data never leaves your local network.
-
-```bash
-qrtunnel <file_path1> --lan
-```
-
-**Benefits of LAN mode:**
-*   **Maximum Speed:** Limited only by your router/network hardware (perfect for 10GB+ files).
-*   **Privacy:** Data stays within your local network.
-*   **Resumable:** Supports high-speed resumable downloads.
-*   **Zero-Copy:** Uses optimized OS-level file streaming for minimum CPU usage.
-
-### Receiving Files (Phone to PC)
-
-To receive files on your computer, simply run `qrtunnel` without any file paths:
+Simply run `qrtunnel` without any arguments to launch the interactive interface:
 
 ```bash
 qrtunnel
 ```
 
-This starts the server in upload mode. Scan the generated QR code on your phone, and you'll get a web page where you can select and upload a file to your computer.
+Use your **Arrow Keys** to:
+1.  Select **SEND** or **RECEIVE**.
+2.  Navigate and select files (Space to toggle, Enter to confirm).
+3.  Choose your Tunnel Mode (Smart, LAN, SSH, Ngrok).
+4.  Select a Port (Random or Custom).
+5.  **Launch!**
 
-### Tunnel Selection (Ngrok vs SSH)
+### 2. Command Line Interface (CLI)
 
-`qrtunnel` supports two tunneling methods: **SSH (localhost.run)** and **ngrok**.
+For quick, scripted, or direct usage, use the `send` and `receive` subcommands.
 
-#### On Linux / macOS:
-*   **Default:** SSH Tunneling (No sign-up required).
-    ```bash
-    qrtunnel <files>
-    ```
-*   **Use Ngrok:** To use ngrok instead (more stable, requires account):
-    ```bash
-    qrtunnel <files> --ngrok
-    ```
+#### Sharing Files (Send)
 
-#### On Windows:
-*   **Default:** Ngrok (Requires account).
-    ```bash
-    qrtunnel <files>
-    ```
-*   **SSH Tunneling:** Not reliably supported on Windows.
-
-### Ngrok Authentication Setup
-
-If you use ngrok (default on Windows, optional on Linux/macOS), you'll need to set up your authtoken once:
+To share one or more files:
 
 ```bash
-qrtunnel --setup
+qrtunnel send <file_path1> [<file_path2> ...]
 ```
 
-Follow the on-screen instructions to get and save your ngrok authtoken.
+Example:
+```bash
+qrtunnel send mydocument.pdf photos/
+```
 
-### Check Ngrok Status
+**Options:**
+*   `-smart`: (Default) Enables both LAN and Internet links.
+*   `-lan`: Force LAN-only mode (fastest, same Wi-Fi only).
+*   `-ssh`: Force SSH tunneling (no account needed).
+*   `-ngrok`: Force ngrok tunneling (requires account).
+*   `-p <port>` or `-<port>`: Specify a custom port (e.g., `-p 8080` or `-8080`).
 
-To check if your ngrok authtoken is configured:
+#### Receiving Files (Receive)
+
+To receive files on your computer:
 
 ```bash
-qrtunnel --status
+qrtunnel receive [destination_directory]
 ```
 
-### Quitting the Server
+Example:
+```bash
+qrtunnel receive ./downloads
+```
 
-The server will run until you press `q` in the terminal or use `Ctrl+C`.
+This starts the server in upload mode. Scan the QR code to get a web page where you can upload files to your computer.
+
+### Tunnel Modes Explained
+
+*   **Smart Mode:** Best for most cases. It creates a public tunnel AND a local LAN server. The phone will try to use the LAN connection first (fastest) and fall back to the tunnel if needed.
+*   **LAN Mode:** Only accessible to devices on the same Wi-Fi. Fastest speed, maximum privacy.
+*   **SSH Mode:** (Linux/macOS Default) Uses `localhost.run` to create a public link. No account required.
+*   **Ngrok Mode:** (Windows Default) Uses `ngrok` for a stable public link. Requires a free ngrok account.
+
+### Ngrok Setup
+
+If you use ngrok (default on Windows, optional on Linux/macOS), you'll need to set up your authtoken once. The TUI or CLI will prompt you if it's missing, or you can configure it manually if needed.
+
+## License
+
+MIT
