@@ -12,7 +12,7 @@ Smart Mode Limitations:
 - VPNs: Active VPNs may interfere with LAN IP detection or routing.
 """
 
-__version__ = "3.5.0"
+__version__ = "3.5.2"
 
 import os
 import sys

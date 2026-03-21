@@ -1,23 +1,17 @@
-# QRTunnel
+# qrtunnel
 
-Cross-platform file sharing via SSH reverse tunneling and QR codes. Allows sharing files with mobile devices anywhere in the world, even behind NAT/firewalls.
-
-Now featuring a **new interactive Terminal User Interface (TUI)** for easier navigation!
+qrtunnel is a cross-platform tool for immediate file sharing via QR codes. It utilizes SSH reverse tunneling and local networking to bridge the gap between a computer and mobile devices, enabling file transfers even behind NAT or restrictive firewalls without requiring an account.
 
 ## Features
 
-*   **Interactive TUI:** A beautiful, easy-to-use terminal interface to select files, choose modes, and configure ports using arrow keys.
-*   **Simple File Sharing:** Share one or more files directly from your command line.
-*   **Receive Files:** Start in upload mode to receive files from any device with a web browser.
-*   **Smart Mode:** Automatically provides both a global Internet link and a high-speed LAN link. The client device auto-detects if it's on the same Wi-Fi and switches to maximum speed.
-*   **High-Speed LAN Sharing:** Use the `--lan` flag (or select LAN in TUI) to share files directly over your local network, keeping data private and fast.
-*   **LAN Security (OTP):** High-speed LAN transfers are protected by a random 6-digit passcode displayed only on your terminal.
-*   **Randomized & Custom Ports:** Defaults to a random port (20000-60000) for security, or choose your own custom port.
-*   **Secure Tunnels:** Supports both **SSH Tunneling** (default on Linux/macOS) and **ngrok** (default on Windows) for secure, public access.
-    *   **SSH Tunneling:** Uses `localhost.run` for instant tunneling without any account or sign-up.
-    *   **Ngrok Support:** Reliable tunneling via ngrok (requires free account).
-*   **QR Code Display:** Generates a scannable QR code in your terminal for easy access on mobile devices.
-*   **Web Interface:** Provides a simple web page for recipients to download shared files or upload files to you.
+*   **Interactive Terminal User Interface (TUI):** A keyboard-driven interface for file selection, mode configuration, and port management.
+*   **Smart Mode:** Simultaneously establishes a public tunnel and a local LAN server. The recipient device automatically detects the fastest available path (LAN or WAN).
+*   **High-Speed LAN Transfers:** Directly shares files over the local network for maximum speed and privacy.
+*   **One-Time Password (OTP) Security:** Local network access is protected by a 6-digit passcode displayed only on the host machine.
+*   **Account-Free Tunneling:** Uses SSH-based tunneling (via localhost.run) by default on Linux and macOS, requiring no registration.
+*   **Ngrok Integration:** Support for ngrok tunnels, providing an alternative for secure public access.
+*   **Multi-File and Directory Sharing:** Capability to share individual files, batches, or entire directories.
+*   **Two-Way Sharing:** Supports both sending files from the computer and receiving uploads from mobile devices.
 
 ## Installation
 
@@ -25,75 +19,59 @@ Now featuring a **new interactive Terminal User Interface (TUI)** for easier nav
 pip install qrtunnel
 ```
 
-This will install `qrtunnel` and all its dependencies.
-
 ## Usage
 
-### 1. Interactive Mode (TUI)
-
-Simply run `qrtunnel` without any arguments to launch the interactive interface:
+### 1. Interactive TUI (Default)
+Running `qrtunnel` without arguments launches the interactive interface.
 
 ```bash
 qrtunnel
 ```
 
-Use your **Arrow Keys** to:
-1.  Select **SEND** or **RECEIVE**.
-2.  Navigate and select files (Space to toggle, Enter to confirm).
-3.  Choose your Tunnel Mode (Smart, LAN, SSH, Ngrok).
-4.  Select a Port (Random or Custom).
-5.  **Launch!**
+#### TUI Navigation
+*   **Up/Down Arrows:** Move the selection cursor.
+*   **Enter / Right Arrow:** Confirm selection or proceed to the next screen.
+*   **Left Arrow:** Return to the previous screen.
+*   **Space / Enter:** Toggle file selection in the file picker.
+*   **Forward Slash ( / ):** Enter search mode within the file picker to filter files by name.
+*   **Escape (ESC):** Cancel search mode.
+*   **Q / Ctrl+C:** Exit the application.
 
 ### 2. Command Line Interface (CLI)
+The CLI supports subcommands for direct execution and scripting.
 
-For quick, scripted, or direct usage, use the `send` and `receive` subcommands.
-
-#### Sharing Files (Send)
-
-To share one or more files:
-
+#### Sending Files
 ```bash
-qrtunnel send <file_path1> [<file_path2> ...]
+# General syntax
+qrtunnel send <path1> <path2> ... [options]
+
+# Example: Share a file and a folder using a specific port
+qrtunnel send report.pdf data/ -8080
+
+# Example: Force LAN-only mode
+qrtunnel send images/ -lan
 ```
 
-Example:
+#### Receiving Files
 ```bash
-qrtunnel send mydocument.pdf photos/
+# Receive files into the current directory
+qrtunnel receive
+
+# Receive files into a specific directory using ngrok
+qrtunnel receive ./uploads -ngrok
 ```
 
-**Options:**
-*   `-smart`: (Default) Enables both LAN and Internet links.
-*   `-lan`: Force LAN-only mode (fastest, same Wi-Fi only).
-*   `-ssh`: Force SSH tunneling (no account needed).
-*   `-ngrok`: Force ngrok tunneling (requires account).
-*   `-p <port>` or `-<port>`: Specify a custom port (e.g., `-p 8080` or `-8080`).
+### Tunneling Options
 
-#### Receiving Files (Receive)
+| Option | Description |
+| :--- | :--- |
+| `-smart` | (Default) Enables both LAN and Public Tunnel with auto-detection. |
+| `-lan` | LAN only. Fastest transfer, accessible only on the same Wi-Fi. |
+| `-ssh` | Public link via localhost.run. No account required. |
+| `-ngrok` | Public link via ngrok. Requires an authtoken. |
 
-To receive files on your computer:
-
-```bash
-qrtunnel receive [destination_directory]
-```
-
-Example:
-```bash
-qrtunnel receive ./downloads
-```
-
-This starts the server in upload mode. Scan the QR code to get a web page where you can upload files to your computer.
-
-### Tunnel Modes Explained
-
-*   **Smart Mode:** Best for most cases. It creates a public tunnel AND a local LAN server. The phone will try to use the LAN connection first (fastest) and fall back to the tunnel if needed.
-*   **LAN Mode:** Only accessible to devices on the same Wi-Fi. Fastest speed, maximum privacy.
-*   **SSH Mode:** (Linux/macOS Default) Uses `localhost.run` to create a public link. No account required.
-*   **Ngrok Mode:** (Windows Default) Uses `ngrok` for a stable public link. Requires a free ngrok account.
-
-### Ngrok Setup
-
-If you use ngrok (default on Windows, optional on Linux/macOS), you'll need to set up your authtoken once. The TUI or CLI will prompt you if it's missing, or you can configure it manually if needed.
+### Configuration and Ports
+*   **Configuration and Ports:** The tool defaults to a random port between 20000 and 60000. Users can specify a port using `-p <port>` or the shorthand `-<port>` (e.g., `-9000`).
 
 ## License
-
 MIT
