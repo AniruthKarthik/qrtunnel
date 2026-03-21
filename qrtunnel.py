@@ -976,10 +976,14 @@ class SSHTunnel:
             print(f"[!] SSH not available, skipping {self.name}")
             return False
         print(f"[*] Trying {self.name} (no auth required)...")
+        
+        # Use platform-appropriate null device
+        null_device = 'NUL' if platform.system() == 'Windows' else '/dev/null'
+        
         cmd = [
             'ssh',
             '-o', 'StrictHostKeyChecking=no',
-            '-o', 'UserKnownHostsFile=/dev/null',
+            '-o', f'UserKnownHostsFile={null_device}',
             '-o', 'ServerAliveInterval=60',
             '-o', 'ConnectTimeout=15',
             '-o', 'LogLevel=ERROR',
@@ -1656,15 +1660,8 @@ def launch_server(is_send, file_paths, mode_name, port):
         noauth_mode = True
     elif mode_name == "Ngrok":
         noauth_mode = False
-    elif mode_name == "Smart":
-        noauth_mode = (platform.system() != 'Windows')
-    else:  # LAN
-        noauth_mode = (platform.system() != 'Windows')
-
-    # Windows can't do SSH
-    if platform.system() == 'Windows' and noauth_mode and mode_name != "LAN":
-        print(f"\n{WRN} SSH tunneling is not reliably supported on Windows. Falling back to ngrok.")
-        noauth_mode = False
+    else:  # Smart, LAN, etc.
+        noauth_mode = True
 
     # ── banner ──
     print("\n" + "=" * 60)
