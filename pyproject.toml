@@ -24,7 +24,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "qrcode>=8.0",
+    "qrcode>=7.0",
     "pyngrok>=7.1.0",
     "streaming-form-data>=1.15.0",
     "werkzeug>=3.0.0,<3.1.0"
