@@ -1,6 +1,6 @@
 import ipaddress
 import platform
-from qr import is_same_lan
+from qrtunnel import is_same_lan
 
 def test_is_same_lan():
     # Same /24 subnet
@@ -18,7 +18,6 @@ def test_is_same_lan():
     # Same IP
     assert is_same_lan("192.168.1.20", "192.168.1.20") == True
 
-    print("✅ is_same_lan tests passed!")
-
 if __name__ == "__main__":
     test_is_same_lan()
+    print("✅ is_same_lan tests passed!")

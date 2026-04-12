@@ -1,10 +1,46 @@
+# --- Python Build/Distribution ---
 *.egg-info/
 dist/
-env/
-.env
-shareqr.egg-info/
 build/
 __pycache__/
 *.pyc
-qrtunnel.egg-info/
+*.pyo
+*.pyd
 
+# --- Virtual Environments ---
+.venv/
+env/
+venv/
+ENV/
+
+# --- Testing / Linting ---
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+.mypy_cache/
+.tox/
+
+# --- IDEs / Editors ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.project
+.pydevproject
+.settings/
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
+
+# --- Environment Secrets ---
+.env
+.env.*
+
+# --- Temporary / Project-Specific Assets ---
+files.zip
+DO_NOT_STAGE/
+publish.yml
+labels.yml

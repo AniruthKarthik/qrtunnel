@@ -30,6 +30,9 @@ dependencies = [
     "werkzeug>=3.0.0"
 ]
 
+[project.optional-dependencies]
+dev = ["ruff>=0.4.0", "pytest>=8.0.0"]
+
 [project.urls]
 Homepage = "https://github.com/aniruthkarthik/qrtunnel"
 Repository = "https://github.com/aniruthkarthik/qrtunnel"
@@ -39,3 +42,28 @@ qrtunnel = "qrtunnel:main"
 
 [tool.setuptools]
 py-modules = ["qrtunnel"]
+
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["qrtunnel"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
