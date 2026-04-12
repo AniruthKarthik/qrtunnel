@@ -8,7 +8,9 @@ version = "3.5.2"
 description = "Cross-platform file sharing via QR code. Defaults to account-free SSH tunneling on Linux/macOS."
 readme = "README.md"
 requires-python = ">=3.6"
-license = "MIT"
+
+[project.license]
+text = "MIT"
 authors = [
     { name = "Aniruth Karthik", email = "aniruthkarthik10@gmail.com" }
 ]

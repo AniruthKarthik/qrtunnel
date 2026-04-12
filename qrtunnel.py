@@ -64,6 +64,7 @@ class LimitedStream:
         self._pos += len(data)
         return data
 
+
 # ─────────────────────────────────────────────────────────
 #  TERMINAL COLOURS & ICONS (Neat Palette)
 # ─────────────────────────────────────────────────────────
