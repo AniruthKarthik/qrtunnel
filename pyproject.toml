@@ -8,9 +8,7 @@ version = "3.5.2"
 description = "Cross-platform file sharing via QR code. Defaults to account-free SSH tunneling on Linux/macOS."
 readme = "README.md"
 requires-python = ">=3.6"
-
-[project.license]
-text = "MIT"
+license = { text = "MIT" }
 authors = [
     { name = "Aniruth Karthik", email = "aniruthkarthik10@gmail.com" }
 ]
@@ -60,9 +58,6 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
-    "E701",  # multiple statements on one line (colon)
-    "E712",  # comparison to True/False in tests
-    "E722",  # bare except
 ]
 
 [tool.ruff.lint.isort]

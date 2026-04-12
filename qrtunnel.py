@@ -108,7 +108,7 @@ def _read_key_unix():
     try:
         attrs = termios.tcgetattr(fd)
         is_canonical = attrs[3] & termios.ICANON
-    except:
+    except Exception:
         is_canonical = True  # Assume cooked if we can't tell
 
     try:
@@ -202,7 +202,7 @@ def _read_key_win():
         c = ch.decode()
         if c.isprintable():
             return c
-    except:
+    except Exception:
         pass
     return None
 
@@ -270,11 +270,11 @@ def is_same_lan(client_ip, server_ip):
                 with open("/proc/net/arp") as f:
                     if client_ip in f.read():
                         return True
-            except:
+            except Exception:
                 pass
         c_net = ipaddress.ip_network(f"{client_ip}/24", strict=False)
         return s_ip in c_net
-    except:
+    except Exception:
         return False
 
 
@@ -290,7 +290,7 @@ class HotspotHelper:
             try:
                 with open(self.config_file) as f:
                     return json.load(f)
-            except:
+            except Exception:
                 pass
         return {}
 
@@ -376,7 +376,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 if "session" in cookies:
                     if cookies["session"].value in self.authorized_sessions:
                         return True
-            except:
+            except Exception:
                 pass
         return False
 
@@ -832,7 +832,7 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                 if not self.wfile.closed:
                     try:
                         self.send_error(500, "Internal Server Error")
-                    except:
+                    except Exception:
                         pass
 
 
@@ -852,7 +852,7 @@ class NgrokAuth:
             try:
                 with open(self.config_file) as f:
                     return json.load(f)
-            except:
+            except Exception:
                 return {}
         return {}
 
@@ -994,7 +994,7 @@ class NgrokTunnel:
 
                 ngrok.disconnect(self.tunnel.public_url)
                 print("\n[*] Ngrok tunnel closed")
-            except:
+            except Exception:
                 pass
 
 
@@ -1011,7 +1011,7 @@ class SSHTunnel:
         try:
             subprocess.run(["ssh", "-V"], capture_output=True, timeout=2)
             return True
-        except:
+        except Exception:
             return False
 
     def _read_output(self):
@@ -1028,7 +1028,7 @@ class SSHTunnel:
                     if match and not self.public_url:
                         self.public_url = match.group(0)
                         self.url_found.set()
-        except:
+        except Exception:
             pass
 
     def start(self):
@@ -1087,10 +1087,10 @@ class SSHTunnel:
             try:
                 self.process.terminate()
                 self.process.wait(timeout=3)
-            except:
+            except Exception:
                 try:
                     self.process.kill()
-                except:
+                except Exception:
                     pass
             self.process = None
             print("\n[*] SSH tunnel closed")
