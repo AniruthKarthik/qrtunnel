@@ -27,7 +27,7 @@ dependencies = [
     "qrcode>=8.0",
     "pyngrok>=7.1.0",
     "streaming-form-data>=1.15.0",
-    "werkzeug>=3.0.0"
+    "werkzeug>=3.0.0,<3.1.0"
 ]
 
 [project.optional-dependencies]
@@ -58,6 +58,9 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+    "E701",  # multiple statements on one line (colon)
+    "E712",  # comparison to True/False in tests
+    "E722",  # bare except
 ]
 
 [tool.ruff.lint.isort]
