@@ -82,5 +82,13 @@ qrtunnel receive ./uploads -ngrok
 ### Configuration and Ports
 *   **Configuration and Ports:** The tool defaults to a random port between 20000 and 60000. Users can specify a port using `-p <port>` or the shorthand `-<port>` (e.g., `-9000`).
 
+## Limitations
+
+*   `localhost.run` may enforce rate limits or session duration limits.
+*   ngrok free-tier accounts may have tunnel, bandwidth, or session limits.
+*   Anyone with the active transfer URL and LAN passcode can access the session.
+*   The LAN OTP is valid for the full session and is not invalidated after first use.
+*   qrtunnel is intended for convenience sharing, not sensitive or regulated data.
+
 ## License
 MIT
