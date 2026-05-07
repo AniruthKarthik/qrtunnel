@@ -4,6 +4,19 @@ import ipaddress
 import platform
 import random
 import socket
+import subprocess
+
+IGNORED_INTERFACE_PREFIXES = (
+    "br-",
+    "docker",
+    "lo",
+    "tap",
+    "tun",
+    "veth",
+    "virbr",
+    "vmnet",
+    "wg",
+)
 
 
 # ─────────────────────────────────────────────────────────
@@ -35,23 +48,67 @@ def find_available_port(start=20000, end=60000, attempts=100):
     raise OSError(f"No available port found after {attempts} attempts")
 
 
+def _is_usable_lan_ip(ip):
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return addr.is_private and not addr.is_loopback and not addr.is_link_local
+
+
+def _is_ignored_interface(name):
+    normalized = name.lower().split("@", 1)[0]
+    return normalized.startswith(IGNORED_INTERFACE_PREFIXES)
+
+
+def _get_linux_interface_ips():
+    try:
+        result = subprocess.run(
+            ["ip", "-o", "-4", "addr", "show", "scope", "global"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return []
+
+    ips = []
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        if len(parts) < 4 or _is_ignored_interface(parts[1]):
+            continue
+        try:
+            inet_index = parts.index("inet")
+        except ValueError:
+            continue
+        ip = parts[inet_index + 1].split("/", 1)[0]
+        if _is_usable_lan_ip(ip):
+            ips.append(ip)
+    return ips
+
+
 def get_lan_ip():
+    if platform.system() == "Linux":
+        interface_ips = _get_linux_interface_ips()
+        if interface_ips:
+            return interface_ips[0]
+
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if _is_usable_lan_ip(ip):
+                return str(ip)
+    except Exception:
+        pass
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        addr = ipaddress.ip_address(ip)
-        if addr.is_private and not addr.is_loopback:
+        if _is_usable_lan_ip(ip):
             return str(ip)
-    except Exception:
-        pass
-    try:
-        hostname = socket.gethostname()
-        for ip in socket.gethostbyname_ex(hostname)[2]:
-            addr = ipaddress.ip_address(ip)
-            if addr.is_private and not addr.is_loopback:
-                return str(ip)
     except Exception:
         pass
     return None
