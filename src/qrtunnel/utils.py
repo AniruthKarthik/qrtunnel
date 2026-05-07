@@ -1,5 +1,6 @@
 """General network and formatting helpers."""
 
+import hashlib
 import ipaddress
 import platform
 import random
@@ -28,6 +29,17 @@ def format_size(b):
             return f"{b:.1f} {unit}"
         b /= 1024.0
     return f"{b:.1f} TB"
+
+
+def sha256_file(path, chunk_size=1024 * 1024):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def is_port_available(port, host="0.0.0.0"):
