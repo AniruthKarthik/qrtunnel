@@ -12,6 +12,22 @@ from .constants import ERR, OK
 from .utils import get_lan_ip
 
 
+def get_windows_ngrok_install_hint():
+    if platform.system() != "Windows":
+        return None
+    try:
+        subprocess.run(["winget", "--version"], capture_output=True, timeout=2)
+        return "Install ngrok with: winget install ngrok.ngrok"
+    except Exception:
+        return "Download ngrok from: https://ngrok.com/download"
+
+
+def print_windows_ngrok_install_hint():
+    hint = get_windows_ngrok_install_hint()
+    if hint:
+        print(f"   {hint}")
+
+
 # ─────────────────────────────────────────────────────────
 #  NGROK / SSH / TUNNEL  (preserved exactly)
 # ─────────────────────────────────────────────────────────
@@ -137,6 +153,7 @@ class NgrokTunnel:
         except ImportError:
             print(f"{ERR} Error: pyngrok is not installed")
             print("   Install with: pip install pyngrok")
+            print_windows_ngrok_install_hint()
             return False
         except Exception as e:
             error_msg = str(e).lower()
@@ -161,6 +178,10 @@ class NgrokTunnel:
                 return False
             else:
                 print(f"{ERR} Error starting ngrok: {e}")
+                if "ngrok" in error_msg and (
+                    "not found" in error_msg or "no such file" in error_msg
+                ):
+                    print_windows_ngrok_install_hint()
                 return False
 
     def stop(self):
@@ -425,4 +446,3 @@ class TunnelManager:
     def stop(self):
         if self.active_tunnel:
             self.active_tunnel.stop()
-

@@ -21,6 +21,7 @@ __all__ = [
     "format_size",
     "generate_qr_code",
     "get_lan_ip",
+    "get_windows_ngrok_install_hint",
     "is_same_lan",
     "load_history",
     "log_transfer",
@@ -49,6 +50,10 @@ def __getattr__(name):
         from . import tunnels
 
         return getattr(tunnels, name)
+    if name == "get_windows_ngrok_install_hint":
+        from . import tunnels
+
+        return tunnels.get_windows_ngrok_install_hint
     if name in {"load_history", "log_transfer", "print_history"}:
         from . import history
 
