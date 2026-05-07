@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qrtunnel"
-version = "3.5.2"
+version = "3.6.0"
 description = "Cross-platform file sharing via QR code. Defaults to account-free SSH tunneling on Linux/macOS."
 readme = "README.md"
 requires-python = ">=3.6"
@@ -38,10 +38,13 @@ Homepage = "https://github.com/aniruthkarthik/qrtunnel"
 Repository = "https://github.com/aniruthkarthik/qrtunnel"
 
 [project.scripts]
-qrtunnel = "qrtunnel:main"
+qrtunnel = "qrtunnel.app:main"
 
 [tool.setuptools]
-py-modules = ["qrtunnel"]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 target-version = "py38"
