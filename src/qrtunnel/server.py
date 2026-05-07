@@ -20,7 +20,7 @@ from .config import Config
 from .constants import ERR, INFO, OK, WRN
 from .history import log_transfer
 from .streams import LimitedStream
-from .utils import is_same_lan, sha256_file
+from .utils import format_progress, is_same_lan, sha256_file
 
 
 # ─────────────────────────────────────────────────────────
@@ -35,6 +35,13 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     upload_mode = False
     server_lan_ip = None
     authorized_sessions = set()
+
+    def print_progress(self, label, transferred, total, force=False, last_update=0):
+        now = time.monotonic()
+        if not force and now - last_update < 0.25:
+            return last_update
+        print(f"\r[*] {label}: {format_progress(transferred, total)}", end="", flush=True)
+        return now
 
     # ── auth ──
     def check_auth(self):
@@ -216,11 +223,19 @@ h2 {{ margin-top: 0; }}
             file_target = FileTarget(str(temp_path))
             parser.register("file", file_target)
             chunk_size = 65536
+            received = 0
+            last_update = 0
             while True:
                 chunk = stream.read(chunk_size)
                 if not chunk:
                     break
+                received += len(chunk)
                 parser.data_received(chunk)
+                last_update = self.print_progress(
+                    "Upload", received, content_length, last_update=last_update
+                )
+            self.print_progress("Upload", received, content_length, force=True)
+            print()
             if not getattr(file_target, "multipart_filename", None):
                 self.send_error(400, "File not found in form data")
                 return
@@ -520,6 +535,7 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                 if platform.system() == "Linux" and hasattr(os, "sendfile"):
                     try:
                         sent = 0
+                        last_update = 0
                         while sent < content_length:
                             n = os.sendfile(
                                 self.connection.fileno(),
@@ -530,18 +546,41 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                             if n == 0:
                                 break
                             sent += n
+                            last_update = self.print_progress(
+                                f"Download {filename}",
+                                sent,
+                                content_length,
+                                last_update=last_update,
+                            )
+                        self.print_progress(
+                            f"Download {filename}", sent, content_length, force=True
+                        )
+                        print()
                     except BrokenPipeError:
                         print(f"{ERR} Client disconnected during transfer of '{filename}'")
                 else:
                     try:
                         remaining = content_length
                         chunk_size = 1024 * 1024
+                        sent = 0
+                        last_update = 0
                         while remaining > 0:
                             chunk = f.read(min(chunk_size, remaining))
                             if not chunk:
                                 break
                             self.wfile.write(chunk)
                             remaining -= len(chunk)
+                            sent += len(chunk)
+                            last_update = self.print_progress(
+                                f"Download {filename}",
+                                sent,
+                                content_length,
+                                last_update=last_update,
+                            )
+                        self.print_progress(
+                            f"Download {filename}", sent, content_length, force=True
+                        )
+                        print()
                     except BrokenPipeError:
                         print(f"{ERR} Client disconnected during transfer of '{filename}'")
             if not range_req or (range_req and end == file_size - 1):
