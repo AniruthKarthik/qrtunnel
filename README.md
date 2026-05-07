@@ -15,6 +15,15 @@ qrtunnel is a cross-platform tool for immediate file sharing via QR codes. It ut
 
 ## Installation
 
+### System Requirements
+
+| Requirement | Minimum |
+| :--- | :--- |
+| Python | 3.8+ |
+| OS | Linux, macOS, Windows |
+| `ssh` binary | Required for SSH mode on Linux/macOS |
+| ngrok | Required for ngrok mode |
+
 ```bash
 pip install qrtunnel
 ```
