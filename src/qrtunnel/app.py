@@ -8,6 +8,7 @@ import re
 import sys
 import threading
 import time
+from pathlib import Path
 
 from .config import Config
 from .constants import (
@@ -257,6 +258,23 @@ Examples:
     return args, port
 
 
+def validate_receive_destination(dest):
+    target_dir = Path(dest).expanduser().resolve()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"{ERR} Could not create destination directory: {target_dir}\n   {e}")
+        sys.exit(1)
+
+    if not target_dir.is_dir():
+        print(f"{ERR} Destination is not a directory: {target_dir}")
+        sys.exit(1)
+    if not os.access(target_dir, os.W_OK):
+        print(f"{ERR} Destination is not writable: {target_dir}")
+        sys.exit(1)
+    return str(target_dir)
+
+
 def main():
     args, cli_port = parse_args()
 
@@ -287,10 +305,7 @@ def main():
                 sys.exit(1)
     else:
         # Receive mode
-        target_dir = os.path.abspath(args.dest)
-        if not os.path.isdir(target_dir):
-            print(f"{ERR} Destination is not a directory: {target_dir}")
-            sys.exit(1)
+        target_dir = validate_receive_destination(args.dest)
         os.chdir(target_dir)  # Switch to dest dir for receiving
         file_paths = []
 
