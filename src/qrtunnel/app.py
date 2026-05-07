@@ -38,7 +38,7 @@ from .utils import format_size, get_lan_ip
 # ─────────────────────────────────────────────────────────
 #  POST-TUI LAUNCH  (server + QR)
 # ─────────────────────────────────────────────────────────
-def launch_server(is_send, file_paths, mode_name, port, no_qr=False):
+def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seconds=None):
     """Everything that happens after the user confirms in the TUI."""
     Config.LOCAL_PORT = port
     Config.OTP = f"{random.randint(0, 999999):06d}"
@@ -140,11 +140,19 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False):
     else:
         generate_qr_code(tunnel_manager.lan_url, no_qr=no_qr)
 
-    print("[*] Server is running.  Press 'q' or Ctrl+C to stop.\n")
+    if expire_seconds:
+        print(f"[*] Server is running for {expire_seconds} seconds. Press 'q' or Ctrl+C to stop.\n")
+        shutdown_at = time.monotonic() + expire_seconds
+    else:
+        print("[*] Server is running.  Press 'q' or Ctrl+C to stop.\n")
+        shutdown_at = None
 
     # ── wait loop ──
     try:
         while True:
+            if shutdown_at and time.monotonic() >= shutdown_at:
+                print("\n[*] Expiration reached. Shutting down…")
+                break
             key = read_key()
             if key and key.lower() == "q":
                 print("\n[*] 'q' pressed. Shutting down…")
@@ -239,6 +247,7 @@ Examples:
             action="store_true",
             help="Suppress terminal QR output and print only access links",
         )
+        p.add_argument("--expire", type=int, help="Auto-shutdown after N seconds")
         p.add_argument("-v", "--version", action="version", version=f"qrtunnel {__version__}")
 
     # 3. Parse
@@ -254,6 +263,9 @@ Examples:
     # Override port if explicitly set via --port
     if args.port:
         port = args.port
+
+    if getattr(args, "expire", None) is not None and args.expire <= 0:
+        parser.error("--expire must be greater than 0")
 
     return args, port
 
@@ -347,4 +359,11 @@ def main():
         print("\n\n[*] Cancelled.")
         sys.exit(0)
 
-    launch_server(is_send, file_paths, mode_name, cli_port, no_qr=args.no_qr)
+    launch_server(
+        is_send,
+        file_paths,
+        mode_name,
+        cli_port,
+        no_qr=args.no_qr,
+        expire_seconds=args.expire,
+    )
