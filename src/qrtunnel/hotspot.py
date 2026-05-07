@@ -76,5 +76,3 @@ class HotspotHelper:
             qr_str += f"P:{escape(password)};"
         qr_str += "H:false;;"
         return qr_str, ssid, password
-
-

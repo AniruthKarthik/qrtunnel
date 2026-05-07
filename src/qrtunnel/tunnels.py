@@ -345,8 +345,10 @@ class CloudflareTunnel:
             if self.url_found.wait(timeout=25):
                 print(f"{OK} Connected via {self.name}: {self.public_url}")
                 return True
-            
-            print(f"[!] {self.name} timeout - no URL received (check your internet or if cloudflared is blocked)")
+
+            print(
+                f"[!] {self.name} timeout - no URL received (check your internet or if cloudflared is blocked)"
+            )
             self.stop()
             return False
         except Exception as e:

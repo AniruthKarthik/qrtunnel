@@ -125,5 +125,3 @@ def read_key():
     if platform.system() == "Windows":
         return _read_key_win()
     return _read_key_unix()
-
-

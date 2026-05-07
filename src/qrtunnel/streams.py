@@ -1,5 +1,6 @@
 """Small stream utilities used by uploads."""
 
+
 # ── LimitedStream (Manual Implementation) ────────────────
 # Werkzeug 3.0.0 removed LimitedStream. Re-implementing a
 # minimal version to ensure upload stability.
@@ -26,5 +27,3 @@ class LimitedStream:
         data = self._stream.readline(size)
         self._pos += len(data)
         return data
-
-
