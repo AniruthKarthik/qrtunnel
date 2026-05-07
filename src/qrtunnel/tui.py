@@ -194,6 +194,7 @@ MODE_OPTIONS = [
     ("Smart", "LAN + Public Tunnel  (auto high-speed)"),
     ("LAN", "Local network only   (fastest, same Wi-Fi)"),
     ("SSH", "localhost.run        (no sign-up)"),
+    ("Cloudflare", "cloudflared         (no sign-up)"),
     ("Ngrok", "ngrok tunnel         (requires account)"),
 ]
 
@@ -204,9 +205,9 @@ def draw_mode(cursor):
     lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
     for i, (name, desc) in enumerate(MODE_OPTIONS):
         if i == cursor:
-            lines.append(f"  {CLR_M}{CLR_BLD}▸ {name:<8}{CLR_RST}  {desc}")
+            lines.append(f"  {CLR_M}{CLR_BLD}▸ {name:<11}{CLR_RST}  {desc}")
         else:
-            lines.append(f"  {CLR_DIM}  {name:<8}  {desc}{CLR_RST}")
+            lines.append(f"  {CLR_DIM}  {name:<11}  {desc}{CLR_RST}")
     lines.append("")
     lines.append(_nav_hint(back=True, fwd=True))
     lines.append(f"{CLR_DIM}{'─' * W}{CLR_RST}")
@@ -550,4 +551,3 @@ def run_tui():
         final_port = find_available_port()
 
     return screen_is_send, selected_files, mode_name, final_port
-

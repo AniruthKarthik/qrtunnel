@@ -11,6 +11,7 @@ __all__ = [
     "Config",
     "FileTransferHandler",
     "HotspotHelper",
+    "CloudflareTunnel",
     "NgrokAuth",
     "NgrokTunnel",
     "SSHTunnel",
@@ -42,7 +43,7 @@ def __getattr__(name):
         from . import tui
 
         return getattr(tui, name)
-    if name in {"NgrokAuth", "NgrokTunnel", "SSHTunnel", "TunnelManager"}:
+    if name in {"CloudflareTunnel", "NgrokAuth", "NgrokTunnel", "SSHTunnel", "TunnelManager"}:
         from . import tunnels
 
         return getattr(tunnels, name)

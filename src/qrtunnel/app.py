@@ -51,8 +51,11 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         noauth_mode = True
     elif mode_name == "Ngrok":
         noauth_mode = False
+    elif mode_name == "Cloudflare":
+        noauth_mode = True
     else:  # Smart, LAN, etc.
         noauth_mode = True
+    tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok") else None
 
     # ── banner ──
     print("\n" + "=" * 60)
@@ -110,7 +113,11 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
 
     # ── tunnel manager ──
     tunnel_manager = TunnelManager(
-        Config.LOCAL_PORT, noauth=noauth_mode, lan_only=lan_only, lan_ip=current_lan_ip
+        Config.LOCAL_PORT,
+        noauth=noauth_mode,
+        lan_only=lan_only,
+        lan_ip=current_lan_ip,
+        tunnel_backend=tunnel_backend,
     )
 
     # ── HTTP handler setup ──
@@ -268,6 +275,11 @@ Examples:
             action="store_true",
             help="Ngrok Tunnel: Secure public link (requires account)",
         )
+        m.add_argument(
+            "-cloudflare",
+            action="store_true",
+            help="Cloudflare Tunnel: Public link via cloudflared",
+        )
 
         p.add_argument("--port", "-p", type=int, help="Specify port manually (e.g. -p 8080)")
         p.add_argument(
@@ -364,6 +376,8 @@ def main():
         mode_name = "SSH"
     elif args.ngrok:
         mode_name = "Ngrok"
+    elif args.cloudflare:
+        mode_name = "Cloudflare"
 
     # Confirmation
     print("\n" + "=" * 60)

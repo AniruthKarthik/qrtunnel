@@ -272,8 +272,81 @@ class SSHTunnel:
             print("\n[*] SSH tunnel closed")
 
 
+class CloudflareTunnel:
+    def __init__(self, local_port):
+        self.local_port = local_port
+        self.process = None
+        self.public_url = None
+        self.name = "cloudflared"
+        self.output_thread = None
+        self.url_found = threading.Event()
+
+    def check_cloudflared(self):
+        try:
+            subprocess.run(["cloudflared", "--version"], capture_output=True, timeout=2)
+            return True
+        except Exception:
+            return False
+
+    def _read_output(self):
+        url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+        try:
+            while self.process and self.process.poll() is None:
+                line = self.process.stdout.readline()
+                if not line:
+                    time.sleep(0.1)
+                    continue
+                match = url_pattern.search(line.strip())
+                if match and not self.public_url:
+                    self.public_url = match.group(0)
+                    self.url_found.set()
+        except Exception:
+            pass
+
+    def start(self):
+        if not self.check_cloudflared():
+            print(f"[!] {self.name} not available, skipping Cloudflare Tunnel")
+            return False
+        print(f"[*] Trying {self.name} (no auth required)...")
+        cmd = ["cloudflared", "tunnel", "--url", f"http://localhost:{self.local_port}"]
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+            )
+            self.output_thread = threading.Thread(target=self._read_output, daemon=True)
+            self.output_thread.start()
+            if self.url_found.wait(timeout=20):
+                print(f"{OK} Connected via {self.name}: {self.public_url}")
+                return True
+            print(f"[!] {self.name} timeout - no URL received")
+            self.stop()
+            return False
+        except Exception as e:
+            print(f"[!] {self.name} error: {e}")
+            self.stop()
+            return False
+
+    def stop(self):
+        if self.process:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=3)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    pass
+            self.process = None
+            print("\n[*] Cloudflare tunnel closed")
+
+
 class TunnelManager:
-    def __init__(self, local_port, noauth=False, lan_only=False, lan_ip=None):
+    def __init__(self, local_port, noauth=False, lan_only=False, lan_ip=None, tunnel_backend=None):
         self.local_port = local_port
         self.active_tunnel = None
         self.public_url = None
@@ -282,6 +355,14 @@ class TunnelManager:
         self.auth_manager = NgrokAuth()
         self.noauth = noauth
         self.lan_only = lan_only
+        self.tunnel_backend = tunnel_backend
+
+    def _try_tunnel(self, tunnel):
+        if tunnel.start():
+            self.active_tunnel = tunnel
+            self.public_url = tunnel.public_url
+            return True
+        return False
 
     def start(self):
         if not self.lan_ip:
@@ -311,14 +392,15 @@ class TunnelManager:
         print("=" * 60)
 
         success = False
-        if self.noauth:
-            ssh_tunnel = SSHTunnel(self.local_port)
-            if ssh_tunnel.start():
-                self.active_tunnel = ssh_tunnel
-                self.public_url = ssh_tunnel.public_url
-                success = True
-            else:
-                print("\n[!] No-auth SSH tunnel failed. Falling back to ngrok...")
+        if self.tunnel_backend == "ngrok":
+            success = False
+        elif self.tunnel_backend == "cloudflare":
+            success = self._try_tunnel(CloudflareTunnel(self.local_port))
+        elif self.noauth:
+            success = self._try_tunnel(SSHTunnel(self.local_port))
+            if not success:
+                print("\n[!] No-auth SSH tunnel failed. Trying Cloudflare Tunnel...")
+                success = self._try_tunnel(CloudflareTunnel(self.local_port))
 
         if not success:
             ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)
@@ -343,5 +425,4 @@ class TunnelManager:
     def stop(self):
         if self.active_tunnel:
             self.active_tunnel.stop()
-
 

@@ -9,6 +9,7 @@ qrtunnel is a cross-platform tool for immediate file sharing via QR codes. It ut
 *   **High-Speed LAN Transfers:** Directly shares files over the local network for maximum speed and privacy.
 *   **One-Time Password (OTP) Security:** Local network access is protected by a 6-digit passcode displayed only on the host machine.
 *   **Account-Free Tunneling:** Uses SSH-based tunneling (via localhost.run) by default on Linux and macOS, requiring no registration.
+*   **Cloudflare Tunnel Support:** Can use `cloudflared` quick tunnels as another account-free public backend.
 *   **Ngrok Integration:** Support for ngrok tunnels, providing an alternative for secure public access.
 *   **Multi-File and Directory Sharing:** Capability to share individual files, batches, or entire directories.
 *   **Two-Way Sharing:** Supports both sending files from the computer and receiving uploads from mobile devices.
@@ -77,6 +78,7 @@ qrtunnel receive ./uploads -ngrok
 | `-smart` | (Default) Enables both LAN and Public Tunnel with auto-detection. |
 | `-lan` | LAN only. Fastest transfer, accessible only on the same Wi-Fi. |
 | `-ssh` | Public link via localhost.run. No account required. |
+| `-cloudflare` | Public link via Cloudflare Tunnel. Requires `cloudflared`. |
 | `-ngrok` | Public link via ngrok. Requires an authtoken. |
 
 ### Configuration and Ports
