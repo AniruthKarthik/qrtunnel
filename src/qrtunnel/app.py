@@ -315,6 +315,17 @@ def validate_receive_destination(dest):
     return str(target_dir)
 
 
+def validate_send_paths(paths):
+    file_paths = []
+    for path in paths:
+        resolved = Path(path).expanduser().resolve()
+        if not resolved.exists():
+            print(f"{ERR} File not found: {resolved}")
+            sys.exit(1)
+        file_paths.append(str(resolved))
+    return file_paths
+
+
 def main():
     args, cli_port = parse_args()
 
@@ -338,11 +349,7 @@ def main():
     is_send = args.command == "send"
 
     if is_send:
-        file_paths = [os.path.abspath(f) for f in args.files]
-        for f in file_paths:
-            if not os.path.exists(f):
-                print(f"{ERR} File not found: {f}")
-                sys.exit(1)
+        file_paths = validate_send_paths(args.files)
     else:
         # Receive mode
         target_dir = validate_receive_destination(args.dest)
