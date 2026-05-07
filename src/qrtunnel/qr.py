@@ -7,7 +7,20 @@ from .constants import CLR_B, CLR_G, CLR_R, CLR_RST, CLR_Y, DOT, INFO, OK, WRN
 # ─────────────────────────────────────────────────────────
 #  QR CODE GENERATION  (preserved)
 # ─────────────────────────────────────────────────────────
-def generate_qr_code(primary_url, fallback_url=None):
+def generate_qr_code(primary_url, fallback_url=None, no_qr=False):
+    if no_qr:
+        print("\n" + "=" * 60)
+        print("qrtunnel access link")
+        print("=" * 60)
+        print(f"{INFO} URL: {primary_url}")
+        if fallback_url:
+            print(f"{OK} Fast local link: {fallback_url}")
+        if Config.OTP:
+            print("-" * 60)
+            print(f"🔒 LAN PASSWORD: {CLR_G}{Config.OTP}{CLR_RST}")
+        print("=" * 60 + "\n")
+        return
+
     try:
         import qrcode
 
@@ -47,5 +60,4 @@ def generate_qr_code(primary_url, fallback_url=None):
         if fallback_url:
             print(f"{INFO} Fallback: {fallback_url}")
         print("=" * 60 + "\n")
-
 

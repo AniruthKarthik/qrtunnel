@@ -37,7 +37,7 @@ from .utils import format_size, get_lan_ip
 # ─────────────────────────────────────────────────────────
 #  POST-TUI LAUNCH  (server + QR)
 # ─────────────────────────────────────────────────────────
-def launch_server(is_send, file_paths, mode_name, port):
+def launch_server(is_send, file_paths, mode_name, port, no_qr=False):
     """Everything that happens after the user confirms in the TUI."""
     Config.LOCAL_PORT = port
     Config.OTP = f"{random.randint(0, 999999):06d}"
@@ -133,11 +133,11 @@ def launch_server(is_send, file_paths, mode_name, port):
 
     # ── QR code ──
     if tunnel_manager.lan_url and tunnel_manager.public_url:
-        generate_qr_code(tunnel_manager.public_url, tunnel_manager.lan_url)
+        generate_qr_code(tunnel_manager.public_url, tunnel_manager.lan_url, no_qr=no_qr)
     elif tunnel_manager.public_url:
-        generate_qr_code(tunnel_manager.public_url)
+        generate_qr_code(tunnel_manager.public_url, no_qr=no_qr)
     else:
-        generate_qr_code(tunnel_manager.lan_url)
+        generate_qr_code(tunnel_manager.lan_url, no_qr=no_qr)
 
     print("[*] Server is running.  Press 'q' or Ctrl+C to stop.\n")
 
@@ -233,6 +233,11 @@ Examples:
         )
 
         p.add_argument("--port", "-p", type=int, help="Specify port manually (e.g. -p 8080)")
+        p.add_argument(
+            "--no-qr",
+            action="store_true",
+            help="Suppress terminal QR output and print only access links",
+        )
         p.add_argument("-v", "--version", action="version", version=f"qrtunnel {__version__}")
 
     # 3. Parse
@@ -327,6 +332,4 @@ def main():
         print("\n\n[*] Cancelled.")
         sys.exit(0)
 
-    launch_server(is_send, file_paths, mode_name, cli_port)
-
-
+    launch_server(is_send, file_paths, mode_name, cli_port, no_qr=args.no_qr)
