@@ -15,35 +15,6 @@ class FakeTunnel:
         pass
 
 
-def test_tunnel_manager_uses_cloudflare_backend(monkeypatch):
-    monkeypatch.setattr(tunnels, "get_lan_ip", lambda: None)
-    monkeypatch.setattr(
-        tunnels,
-        "CloudflareTunnel",
-        lambda port: FakeTunnel(port, "cloudflare"),
-    )
-
-    manager = tunnels.TunnelManager(8000, tunnel_backend="cloudflare")
-
-    assert manager.start()
-    assert manager.public_url == "https://cloudflare.example"
-
-
-def test_tunnel_manager_noauth_falls_back_to_cloudflare(monkeypatch):
-    monkeypatch.setattr(tunnels, "get_lan_ip", lambda: None)
-    monkeypatch.setattr(tunnels, "SSHTunnel", lambda port: FakeTunnel(port, "ssh", False))
-    monkeypatch.setattr(
-        tunnels,
-        "CloudflareTunnel",
-        lambda port: FakeTunnel(port, "cloudflare"),
-    )
-
-    manager = tunnels.TunnelManager(8000, noauth=True)
-
-    assert manager.start()
-    assert manager.public_url == "https://cloudflare.example"
-
-
 def test_tunnel_manager_lan_only_requires_lan_ip(monkeypatch):
     monkeypatch.setattr(tunnels, "get_lan_ip", lambda: None)
 

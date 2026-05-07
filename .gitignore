@@ -44,3 +44,4 @@ files.zip
 DO_NOT_STAGE/
 publish.yml
 labels.yml
+.codex

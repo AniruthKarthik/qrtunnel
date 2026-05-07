@@ -194,7 +194,6 @@ MODE_OPTIONS = [
     ("Smart", "LAN + Public Tunnel  (auto high-speed)"),
     ("LAN", "Local network only   (fastest, same Wi-Fi)"),
     ("SSH", "localhost.run        (no sign-up)"),
-    ("Cloudflare", "cloudflared         (no sign-up)"),
     ("Ngrok", "ngrok tunnel         (requires account)"),
 ]
 

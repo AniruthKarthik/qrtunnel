@@ -86,7 +86,6 @@ qrtunnel history --limit 5
 | `-smart` | (Default) Enables both LAN and Public Tunnel with auto-detection. |
 | `-lan` | LAN only. Fastest transfer, accessible only on the same Wi-Fi. |
 | `-ssh` | Public link via localhost.run. No account required. |
-| `-cloudflare` | Public link via Cloudflare Tunnel. Requires `cloudflared`. |
 | `-ngrok` | Public link via ngrok. Requires an authtoken. |
 
 ### Configuration and Ports

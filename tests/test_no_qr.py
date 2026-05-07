@@ -24,16 +24,6 @@ def test_parse_expire_flag(monkeypatch):
     assert port == 6969
 
 
-def test_parse_cloudflare_mode(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["qrtunnel", "send", "photo.jpg", "-cloudflare"])
-
-    args, port = parse_args()
-
-    assert args.command == "send"
-    assert args.cloudflare is True
-    assert port == 6969
-
-
 def test_generate_qr_code_no_qr_skips_ascii_qr(capsys):
     generate_qr_code("https://example.test/share", no_qr=True)
 

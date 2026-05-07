@@ -317,7 +317,8 @@ class CloudflareTunnel:
                 if not line:
                     time.sleep(0.1)
                     continue
-                match = url_pattern.search(line.strip())
+                line = line.strip()
+                match = url_pattern.search(line)
                 if match and not self.public_url:
                     self.public_url = match.group(0)
                     self.url_found.set()
@@ -341,10 +342,11 @@ class CloudflareTunnel:
             )
             self.output_thread = threading.Thread(target=self._read_output, daemon=True)
             self.output_thread.start()
-            if self.url_found.wait(timeout=20):
+            if self.url_found.wait(timeout=25):
                 print(f"{OK} Connected via {self.name}: {self.public_url}")
                 return True
-            print(f"[!] {self.name} timeout - no URL received")
+            
+            print(f"[!] {self.name} timeout - no URL received (check your internet or if cloudflared is blocked)")
             self.stop()
             return False
         except Exception as e:
@@ -415,13 +417,8 @@ class TunnelManager:
         success = False
         if self.tunnel_backend == "ngrok":
             success = False
-        elif self.tunnel_backend == "cloudflare":
-            success = self._try_tunnel(CloudflareTunnel(self.local_port))
         elif self.noauth:
             success = self._try_tunnel(SSHTunnel(self.local_port))
-            if not success:
-                print("\n[!] No-auth SSH tunnel failed. Trying Cloudflare Tunnel...")
-                success = self._try_tunnel(CloudflareTunnel(self.local_port))
 
         if not success:
             ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)

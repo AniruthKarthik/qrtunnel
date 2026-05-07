@@ -385,8 +385,6 @@ def main():
         mode_name = "SSH"
     elif args.ngrok:
         mode_name = "Ngrok"
-    elif args.cloudflare:
-        mode_name = "Cloudflare"
 
     # Confirmation
     print("\n" + "=" * 60)
