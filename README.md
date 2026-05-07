@@ -71,6 +71,12 @@ qrtunnel receive
 qrtunnel receive ./uploads -ngrok
 ```
 
+#### Transfer History
+```bash
+qrtunnel history
+qrtunnel history --limit 5
+```
+
 ### Tunneling Options
 
 | Option | Description |

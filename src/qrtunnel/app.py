@@ -28,6 +28,7 @@ from .constants import (
     WRN,
     __version__,
 )
+from .history import print_history
 from .hotspot import HotspotHelper
 from .keyboard import read_key
 from .qr import generate_qr_code
@@ -257,6 +258,10 @@ Examples:
         "dest", nargs="?", default=".", help="Directory to save received files (default: current)"
     )
 
+    # HISTORY command
+    p_history = subparsers.add_parser("history", help="Show recent transfer history")
+    p_history.add_argument("--limit", type=int, default=20, help="Number of entries to show")
+
     # Global Options
     for p in [p_send, p_recv]:
         g = p.add_argument_group("Tunneling Options")
@@ -301,7 +306,7 @@ Examples:
     args = parser.parse_args(clean_argv)
 
     # Override port if explicitly set via --port
-    if args.port:
+    if getattr(args, "port", None):
         port = args.port
 
     if getattr(args, "expire", None) is not None and args.expire <= 0:
@@ -358,6 +363,10 @@ def main():
         return
 
     # ── CLI MODE ──
+    if args.command == "history":
+        print_history(limit=args.limit)
+        return
+
     is_send = args.command == "send"
 
     if is_send:

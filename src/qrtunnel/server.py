@@ -16,6 +16,7 @@ from streaming_form_data.targets import FileTarget
 
 from .config import Config
 from .constants import ERR, INFO, OK, WRN
+from .history import log_transfer
 from .streams import LimitedStream
 from .utils import is_same_lan, sha256_file
 
@@ -229,6 +230,12 @@ h2 {{ margin-top: 0; }}
             os.rename(temp_path, final_path)
             print(f"{OK} File '{sanitized_filename}' received and saved to {final_path}")
             print(f"{OK} SHA256: {sha256_file(final_path)}")
+            log_transfer(
+                sanitized_filename,
+                os.path.getsize(final_path),
+                self.client_address[0],
+                "receive",
+            )
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             success_html = self.get_upload_success_page(sanitized_filename)
@@ -498,6 +505,7 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             if not range_req or (range_req and end == file_size - 1):
                 print(f"{OK} File '{filename}' served to {self.client_address[0]}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")
+                log_transfer(filename, file_size, self.client_address[0], "send")
         except Exception as e:
             if not isinstance(e, BrokenPipeError) and "Broken pipe" not in str(e):
                 print(f"{ERR} Error serving file '{filename}': {e}")
@@ -506,4 +514,3 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                         self.send_error(500, "Internal Server Error")
                     except Exception:
                         pass
-

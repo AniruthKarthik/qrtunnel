@@ -22,6 +22,8 @@ __all__ = [
     "generate_qr_code",
     "get_lan_ip",
     "is_same_lan",
+    "load_history",
+    "log_transfer",
     "launch_server",
     "main",
     "parse_args",
@@ -47,4 +49,8 @@ def __getattr__(name):
         from . import tunnels
 
         return getattr(tunnels, name)
+    if name in {"load_history", "log_transfer", "print_history"}:
+        from . import history
+
+        return getattr(history, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
