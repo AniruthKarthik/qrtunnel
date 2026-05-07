@@ -2,7 +2,6 @@
 
 import os
 import platform
-import random
 import sys
 
 from .constants import (
@@ -23,7 +22,7 @@ from .constants import (
     __version__,
 )
 from .keyboard import read_key
-from .utils import format_size
+from .utils import find_available_port, format_size
 
 # ─────────────────────────────────────────────────────────
 #  TUI  –  the interactive arrow-key interface
@@ -548,8 +547,7 @@ def run_tui():
     if port_cursor == 1 and custom_port.isdigit():
         final_port = int(custom_port)
     else:
-        final_port = random.randint(20000, 60000)
+        final_port = find_available_port()
 
     return screen_is_send, selected_files, mode_name, final_port
-
 

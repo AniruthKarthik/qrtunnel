@@ -2,6 +2,7 @@
 
 import ipaddress
 import platform
+import random
 import socket
 
 
@@ -14,6 +15,24 @@ def format_size(b):
             return f"{b:.1f} {unit}"
         b /= 1024.0
     return f"{b:.1f} TB"
+
+
+def is_port_available(port, host="0.0.0.0"):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+    except OSError:
+        return False
+    return True
+
+
+def find_available_port(start=20000, end=60000, attempts=100):
+    for _ in range(attempts):
+        port = random.randint(start, end)
+        if is_port_available(port):
+            return port
+    raise OSError(f"No available port found after {attempts} attempts")
 
 
 def get_lan_ip():
@@ -57,5 +76,3 @@ def is_same_lan(client_ip, server_ip):
         return s_ip in c_net
     except Exception:
         return False
-
-
