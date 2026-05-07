@@ -1,10 +1,12 @@
 """CLI parsing and server launch orchestration."""
 
 import argparse
+import atexit
 import os
 import platform
 import random
 import re
+import signal
 import sys
 import threading
 import time
@@ -127,9 +129,33 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
     server_thread.start()
     print(f"\n{OK} HTTP server started on all interfaces (port {Config.LOCAL_PORT})")
 
+    stopped = False
+
+    def cleanup():
+        nonlocal stopped
+        if stopped:
+            return
+        stopped = True
+        tunnel_manager.stop()
+        server.shutdown()
+        server.server_close()
+
+    atexit.register(cleanup)
+    previous_sigint = signal.getsignal(signal.SIGINT)
+
+    def handle_sigint(signum, frame):
+        print("\n[*] Ctrl+C pressed. Shutting down…")
+        cleanup()
+        sys.exit(130)
+
+    try:
+        signal.signal(signal.SIGINT, handle_sigint)
+    except ValueError:
+        previous_sigint = None
+
     # ── start tunnel ──
     if not tunnel_manager.start():
-        server.shutdown()
+        cleanup()
         sys.exit(1)
 
     # ── QR code ──
@@ -163,8 +189,10 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
     except KeyboardInterrupt:
         print("\n[*] Ctrl+C pressed. Shutting down…")
     finally:
-        tunnel_manager.stop()
-        server.shutdown()
+        cleanup()
+        atexit.unregister(cleanup)
+        if previous_sigint is not None:
+            signal.signal(signal.SIGINT, previous_sigint)
         print("[*] Server stopped. Goodbye!")
 
 
