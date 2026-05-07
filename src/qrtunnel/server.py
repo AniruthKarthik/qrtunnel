@@ -1,11 +1,13 @@
 """HTTP handlers for file download and upload."""
 
 import http.cookies
+import io
 import os
 import platform
 import re
 import time
 import uuid
+import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
@@ -366,6 +368,9 @@ fileInput.addEventListener('change', () => {{
         for fp in self.file_paths:
             fn = os.path.basename(fp)
             file_list_html += f'<li><a href="/download/{fn}" class="file-link">{fn}</a></li>'
+        zip_link_html = ""
+        if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
+            zip_link_html = '<a href="/download/all.zip" class="zip-link">Download all as ZIP</a>'
         html = f"""<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -389,6 +394,9 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
               font-family:'SF Mono','Consolas',monospace; color:#ccc;
               text-decoration:none; transition:background-color 0.2s; }}
 .file-link:hover {{ background-color:#2a3a5e; }}
+.zip-link {{ display:block; margin-top:16px; padding:12px 16px; background:#4361ee; color:#fff;
+             border-radius:6px; text-decoration:none; text-align:center; font-size:14px; }}
+.zip-link:hover {{ background:#3a56d4; }}
 .footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
 </style></head><body>
 <div class="container">
@@ -396,6 +404,7 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 <div class="file-section">
 <p class="file-section-title">Files ({len(self.file_paths)})</p>
 <ul class="file-list">{file_list_html}</ul>
+{zip_link_html}
 </div>
 <div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
 <p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
@@ -442,7 +451,40 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             return False
         return start, min(end, file_size - 1)
 
+    def build_zip_archive(self):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            for fp in self.file_paths:
+                path = Path(fp)
+                if path.is_dir():
+                    for child in path.rglob("*"):
+                        if child.is_file():
+                            archive.write(child, path.name / child.relative_to(path))
+                elif path.is_file():
+                    archive.write(path, path.name)
+        return buffer.getvalue()
+
+    def serve_zip_archive(self):
+        try:
+            data = self.build_zip_archive()
+            self.send_response(200)
+            self.send_header("Content-type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="qrtunnel-files.zip"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            print(f"{OK} ZIP archive served to {self.client_address[0]}")
+            log_transfer("qrtunnel-files.zip", len(data), self.client_address[0], "send")
+        except BrokenPipeError:
+            print(f"{ERR} Client disconnected during ZIP transfer")
+        except Exception as e:
+            print(f"{ERR} Error serving ZIP archive: {e}")
+            self.send_error(500, "Internal Server Error")
+
     def serve_single_file(self, filename):
+        if filename == "all.zip":
+            self.serve_zip_archive()
+            return
         target_path = None
         for fp in self.file_paths:
             if os.path.basename(fp) == filename:
