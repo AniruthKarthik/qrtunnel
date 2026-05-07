@@ -38,6 +38,8 @@ Running `qrtunnel` without arguments launches the interactive interface.
 qrtunnel
 ```
 
+![qrtunnel TUI file selection](docs/assets/tui-file-selection.png)
+
 #### TUI Navigation
 *   **Up/Down Arrows:** Move the selection cursor.
 *   **Enter / Right Arrow:** Confirm selection or proceed to the next screen.
