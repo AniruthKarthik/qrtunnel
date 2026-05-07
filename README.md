@@ -90,5 +90,11 @@ qrtunnel receive ./uploads -ngrok
 *   The LAN OTP is valid for the full session and is not invalidated after first use.
 *   qrtunnel is intended for convenience sharing, not sensitive or regulated data.
 
+## Security
+
+qrtunnel is designed for short-lived convenience transfers between devices you control. LAN access is protected by a randomized 6-digit OTP, and the server listens on a selected local port for the current session.
+
+Public tunnel URLs are bearer links: anyone who receives the active URL can reach the transfer page while the session is running. Traffic that uses third-party tunnel providers is subject to those providers' transport, logging, and account policies.
+
 ## License
 MIT
