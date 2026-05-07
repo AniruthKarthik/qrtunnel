@@ -17,7 +17,7 @@ def generate_qr_code(primary_url, fallback_url=None, no_qr=False):
             print(f"{OK} Fast local link: {fallback_url}")
         if Config.OTP:
             print("-" * 60)
-            print(f"🔒 LAN PASSWORD: {CLR_G}{Config.OTP}{CLR_RST}")
+            print(f"🔒 LAN PASSWORD: {CLR_G}{Config.OTP}{CLR_RST} (valid for this session)")
         print("=" * 60 + "\n")
         return
 
@@ -48,7 +48,7 @@ def generate_qr_code(primary_url, fallback_url=None, no_qr=False):
             print(f"\n{INFO} URL: {primary_url}")
         if Config.OTP:
             print("-" * 60)
-            print(f"🔒 LAN PASSWORD: {CLR_G}{Config.OTP}{CLR_RST}")
+            print(f"🔒 LAN PASSWORD: {CLR_G}{Config.OTP}{CLR_RST} (valid for this session)")
             print("-" * 60)
         print("=" * 60 + "\n")
     except ImportError:
@@ -60,4 +60,3 @@ def generate_qr_code(primary_url, fallback_url=None, no_qr=False):
         if fallback_url:
             print(f"{INFO} Fallback: {fallback_url}")
         print("=" * 60 + "\n")
-

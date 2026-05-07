@@ -57,7 +57,7 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False):
     print("qrtunnel - Simple File Transfer")
     print(f"Platform: {platform.system()} {platform.release()}")
     print(f"Port:     {Config.LOCAL_PORT}")
-    print(f"Security: LAN Access Code -> [{CLR_G}{Config.OTP}{CLR_RST}]")
+    print(f"Security: LAN Access Code -> [{CLR_G}{Config.OTP}{CLR_RST}] (valid for this session)")
     print(f"Mode:     {'Send (share)' if is_send else 'Receive (upload)'}")
     print(f"Tunnel:   {mode_name}")
     print("=" * 60)
