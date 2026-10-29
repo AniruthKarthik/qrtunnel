@@ -54,6 +54,17 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             return True
         if self.path == "/ping" or self.path.startswith("/ping?"):
             return True
+        # Allow token in query parameter for seamless transition from Tunnel to LAN
+        try:
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            params = parse_qs(parsed.query)
+            token = params.get("auth", [None])[0]
+            if token and token in self.authorized_sessions:
+                return True
+        except Exception:
+            pass
         cookie_header = self.headers.get("Cookie")
         if cookie_header:
             try:
@@ -194,25 +205,55 @@ h2 {{ margin-top: 0; }}
         self.end_headers()
         self.wfile.write(gif)
 
-    # ── smart redirect JS ──
+    def _send_auth_cookie_if_needed(self):
+        try:
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            token = parse_qs(parsed.query).get("auth", [None])[0]
+            if token and token in self.authorized_sessions:
+                self.send_header(
+                    "Set-Cookie", f"session={token}; Path=/; HttpOnly; Max-Age=86400"
+                )
+        except Exception:
+            pass
+
+    # ── smart redirect JS & LAN switch banner ──
     def get_smart_redirect_js(self):
         lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
         if not lan_ip or lan_ip in ("None", "127.0.0.1"):
             return ""
+
+        # If already connected via direct LAN, indicate high-speed status
+        client_ip = self.client_address[0]
+        if client_ip not in ("127.0.0.1", "::1") and is_same_lan(client_ip, lan_ip):
+            return '<div style="margin-top:16px;text-align:center;font-size:12px;color:#4CAF50;">⚡ Connected via High-Speed LAN</div>'
+
+        # Generate pre-authenticated token for seamless handover
+        token = str(uuid.uuid4())
+        self.authorized_sessions.add(token)
+        lan_target = f"http://{lan_ip}:{Config.LOCAL_PORT}{self.path}"
+        delim = "&" if "?" in lan_target else "?"
+        lan_url = f"{lan_target}{delim}auth={token}"
+
         return f"""
+    <div id="lan-discovery" style="margin-top:20px;text-align:center;padding:14px;background:#132a36;border:1px solid #0096c7;border-radius:6px;">
+        <p style="font-size:13px;color:#90e0ef;margin-bottom:8px;">⚡ High-Speed Local Transfer Available</p>
+        <a id="lan-btn" href="{lan_url}" style="display:inline-block;font-size:13px;color:#fff;background:#0077b6;text-decoration:none;padding:8px 16px;border-radius:4px;font-weight:600;">Switch to High Speed (Same Wi-Fi)</a>
+    </div>
     <script>
         (function() {{
             var lanIp = "{lan_ip}";
             var lanPort = {Config.LOCAL_PORT};
-            var lanUrl = "http://" + lanIp + ":" + lanPort;
+            var lanUrl = "{lan_url}";
             if (window.location.hostname !== lanIp) {{
-                var img = new Image();
-                img.onload = function() {{
-                    setTimeout(function() {{
-                        window.location.href = lanUrl + window.location.pathname + window.location.search;
-                    }}, 100);
-                }};
-                img.src = lanUrl + "/ping?t=" + Date.now();
+                if (window.location.protocol === "http:") {{
+                    var img = new Image();
+                    img.onload = function() {{
+                        window.location.href = lanUrl;
+                    }};
+                    img.src = "http://" + lanIp + ":" + lanPort + "/ping?t=" + Date.now();
+                }}
             }}
         }})();
     </script>"""
@@ -350,10 +391,6 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 </div>
 <button type="submit" id="submit-btn" class="submit-button">Upload</button>
 </form>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
-</div>
 <p class="footer">qrtunnel</p>
 </div>
 <script>
@@ -451,27 +488,13 @@ uploadForm.addEventListener('submit', (e) => {{
     xhr.open('POST', '/upload', true);
     xhr.send(formData);
 }});
-(function() {{
-    var lanIp = "{lan_ip}";
-    var lanPort = {Config.LOCAL_PORT};
-    var lanUrl = "http://" + lanIp + ":" + lanPort;
-    if (lanIp && lanIp !== "None" && window.location.hostname !== lanIp) {{
-        var discoveryDiv = document.getElementById('lan-discovery');
-        var lanBtn = document.getElementById('lan-btn');
-        var img = new Image();
-        img.onload = function() {{
-            discoveryDiv.style.display = 'block';
-            lanBtn.href = lanUrl + window.location.pathname + window.location.search;
-        }};
-        img.src = lanUrl + "/ping?t=" + Date.now();
-    }}
-}})();
 </script>
 {self.get_smart_redirect_js()}
 </body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.send_header("Content-Length", len(html.encode()))
+        self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
 
@@ -525,34 +548,14 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 <ul class="file-list">{file_list_html}</ul>
 {zip_link_html}
 </div>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
-</div>
 <p class="footer">qrtunnel</p>
 </div>
-<script>
-(function() {{
-    var lanIp = "{lan_ip}";
-    var lanPort = {Config.LOCAL_PORT};
-    var lanUrl = "http://" + lanIp + ":" + lanPort;
-    if (lanIp && lanIp !== "None" && window.location.hostname !== lanIp) {{
-        var discoveryDiv = document.getElementById('lan-discovery');
-        var lanBtn = document.getElementById('lan-btn');
-        var img = new Image();
-        img.onload = function() {{
-            discoveryDiv.style.display = 'block';
-            lanBtn.href = lanUrl + window.location.pathname + window.location.search;
-        }};
-        img.src = lanUrl + "/ping?t=" + Date.now();
-    }}
-}})();
-</script>
 {self.get_smart_redirect_js()}
 </body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.send_header("Content-Length", len(html.encode()))
+        self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
 

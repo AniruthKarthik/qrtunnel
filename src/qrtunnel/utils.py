@@ -154,3 +154,28 @@ def is_same_lan(client_ip, server_ip):
         return s_ip in c_net
     except Exception:
         return False
+
+
+_CACHED_PUBLIC_IP = None
+
+
+def get_public_ip(timeout=2.0):
+    """Fetch the host's public WAN IP for same-network matching."""
+    global _CACHED_PUBLIC_IP
+    if _CACHED_PUBLIC_IP:
+        return _CACHED_PUBLIC_IP
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(
+            "https://api.ipify.org", headers={"User-Agent": "qrtunnel"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ip = resp.read().decode("utf-8").strip()
+            if ip:
+                _CACHED_PUBLIC_IP = ip
+                return _CACHED_PUBLIC_IP
+    except Exception:
+        pass
+    return None
+
