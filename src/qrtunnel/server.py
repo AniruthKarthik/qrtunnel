@@ -2,6 +2,7 @@
 
 import http.cookies
 import io
+import mimetypes
 import os
 import platform
 import re
@@ -502,12 +503,18 @@ uploadForm.addEventListener('submit', (e) => {{
     def send_download_page(self):
         lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
         file_list_html = ""
-        for fp in self.file_paths:
+        basenames = [os.path.basename(fp) for fp in self.file_paths]
+        has_duplicates = len(basenames) != len(set(basenames))
+        for idx, fp in enumerate(self.file_paths):
             fn = os.path.basename(fp)
+            href_path = f"/download/{idx}/{fn}" if has_duplicates else f"/download/{fn}"
+            display_name = (
+                f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
+            )
             size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
             file_list_html += (
-                f'<li><a href="/download/{fn}" class="file-link">'
-                f'<span>{fn}</span><span class="file-size">{size_label}</span></a></li>'
+                f'<li><a href="{href_path}" class="file-link">'
+                f'<span>{display_name}</span><span class="file-size">{size_label}</span></a></li>'
             )
         zip_link_html = ""
         if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
@@ -573,10 +580,11 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             return False
         return start, min(end, file_size - 1)
 
-    def build_zip_archive(self):
+    def build_zip_archive(self, file_paths=None):
         buffer = io.BytesIO()
+        paths = file_paths if file_paths is not None else self.file_paths
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for fp in self.file_paths:
+            for fp in paths:
                 path = Path(fp)
                 if path.is_dir():
                     for child in path.rglob("*"):
@@ -586,6 +594,39 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                     archive.write(path, path.name)
         return buffer.getvalue()
 
+    def serve_directory_zip(self, dir_path):
+        dir_name = os.path.basename(dir_path.rstrip(os.sep))
+        try:
+            data = self.build_zip_archive(file_paths=[dir_path])
+            total_size = len(data)
+            self.send_response(200)
+            self.send_header("Content-type", "application/zip")
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{dir_name}.zip"'
+            )
+            self.send_header("Content-Length", str(total_size))
+            self._send_auth_cookie_if_needed()
+            self.end_headers()
+            sent = 0
+            chunk_size = 262144  # 256 KB
+            last_update = 0
+            while sent < total_size:
+                chunk = data[sent : sent + chunk_size]
+                self.wfile.write(chunk)
+                sent += len(chunk)
+                last_update = self.print_progress(
+                    f"Download {dir_name}.zip", sent, total_size, last_update=last_update
+                )
+            self.print_progress(f"Download {dir_name}.zip", sent, total_size, force=True)
+            print()
+            print(f"{OK} Directory ZIP archive '{dir_name}.zip' served to {self.client_address[0]}")
+            log_transfer(f"{dir_name}.zip", total_size, self.client_address[0], "send")
+        except BrokenPipeError:
+            print(f"\n{ERR} Client disconnected during ZIP transfer of '{dir_name}'")
+        except Exception as e:
+            print(f"{ERR} Error serving directory ZIP '{dir_name}': {e}")
+            self.send_error(500, "Internal Server Error")
+
     def serve_zip_archive(self):
         try:
             data = self.build_zip_archive()
@@ -594,6 +635,7 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             self.send_header("Content-type", "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="qrtunnel-files.zip"')
             self.send_header("Content-Length", str(total_size))
+            self._send_auth_cookie_if_needed()
             self.end_headers()
             sent = 0
             chunk_size = 262144  # 256 KB
@@ -620,12 +662,22 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             self.serve_zip_archive()
             return
         target_path = None
-        for fp in self.file_paths:
-            if os.path.basename(fp) == filename:
-                target_path = fp
-                break
-        if not target_path or not os.path.isfile(target_path):
+        if "/" in filename:
+            parts = filename.split("/", 1)
+            if parts[0].isdigit():
+                idx = int(parts[0])
+                if 0 <= idx < len(self.file_paths):
+                    target_path = self.file_paths[idx]
+        if not target_path:
+            for fp in self.file_paths:
+                if os.path.basename(fp) == filename:
+                    target_path = fp
+                    break
+        if not target_path or not os.path.exists(target_path):
             self.send_error(404, "File Not Found")
+            return
+        if os.path.isdir(target_path):
+            self.serve_directory_zip(target_path)
             return
         try:
             file_size = os.path.getsize(target_path)
@@ -643,10 +695,13 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                 end = file_size - 1
                 content_length = file_size
                 self.send_response(200)
-            self.send_header("Content-type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            mtype, _ = mimetypes.guess_type(target_path)
+            content_type = mtype if mtype else "application/octet-stream"
+            self.send_header("Content-type", content_type)
+            self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(target_path)}"')
             self.send_header("Content-Length", str(content_length))
             self.send_header("Accept-Ranges", "bytes")
+            self._send_auth_cookie_if_needed()
             self.end_headers()
             with open(target_path, "rb") as f:
                 if start > 0:
