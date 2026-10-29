@@ -212,7 +212,7 @@ class SSHTunnel:
             return False
 
     def _read_output(self):
-        url_pattern = re.compile(r"https://[a-zA-Z0-9.-]+\.lhr\.life")
+        url_pattern = re.compile(r"https://[a-zA-Z0-9.-]+(?:\.lhr\.life|\.localhost\.run)")
         try:
             while self.process and self.process.poll() is None:
                 line = self.process.stdout.readline()
@@ -410,23 +410,23 @@ class TunnelManager:
                 return False
 
         print("\n" + "=" * 60)
-        if self.lan_ip:
-            print("SMART MODE ENABLED (LAN + Tunnel)")
-        else:
-            print("ESTABLISHING PUBLIC TUNNEL")
+        print("ESTABLISHING PUBLIC TUNNEL")
         print("=" * 60)
 
         success = False
-        if self.tunnel_backend == "ngrok":
+        if self.tunnel_backend == "cloudflare":
+            success = self._try_tunnel(CloudflareTunnel(self.local_port))
+        elif self.tunnel_backend == "ngrok":
             success = False
         elif self.noauth:
             success = self._try_tunnel(SSHTunnel(self.local_port))
+            if not success and self.tunnel_backend is None:
+                # Fallback: try Cloudflare if installed
+                success = self._try_tunnel(CloudflareTunnel(self.local_port))
 
-        if not success:
+        if not success and self.tunnel_backend != "cloudflare":
             ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)
-            if ngrok_tunnel.start():
-                self.active_tunnel = ngrok_tunnel
-                self.public_url = ngrok_tunnel.public_url
+            if self._try_tunnel(ngrok_tunnel):
                 success = True
 
         if success:

@@ -191,8 +191,8 @@ def draw_files(cursor, cwd, selected_files, scroll_offset, search_query="", is_s
 
 # ── Screen 2 – Mode ───────────────────────────────────────
 MODE_OPTIONS = [
-    ("Smart", "LAN + Public Tunnel  (auto high-speed)"),
     ("LAN", "Local network only   (fastest, same Wi-Fi)"),
+    ("Cloudflare", "Cloudflare Tunnel  (no sign-up, cloudflared)"),
     ("SSH", "localhost.run        (no sign-up)"),
     ("Ngrok", "ngrok tunnel         (requires account)"),
 ]

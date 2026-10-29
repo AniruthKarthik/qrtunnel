@@ -44,7 +44,7 @@ from .utils import format_size, get_lan_ip
 def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seconds=None):
     """Everything that happens after the user confirms in the TUI."""
     Config.LOCAL_PORT = port
-    Config.OTP = f"{random.randint(0, 999999):06d}"
+    Config.OTP = f"{random.randint(0, 9999):04d}"
 
     # map mode_name → flags
     lan_only = mode_name == "LAN"
@@ -54,7 +54,7 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         noauth_mode = False
     elif mode_name == "Cloudflare":
         noauth_mode = True
-    else:  # Smart, LAN, etc.
+    else:  # LAN
         noauth_mode = True
     tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok") else None
 
@@ -167,12 +167,12 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         sys.exit(1)
 
     # ── QR code ──
-    if tunnel_manager.lan_url and tunnel_manager.public_url:
-        generate_qr_code(tunnel_manager.public_url, tunnel_manager.lan_url, no_qr=no_qr)
-    elif tunnel_manager.public_url:
-        generate_qr_code(tunnel_manager.public_url, no_qr=no_qr)
-    else:
-        generate_qr_code(tunnel_manager.lan_url, no_qr=no_qr)
+    target_url = (
+        tunnel_manager.lan_url
+        if lan_only
+        else (tunnel_manager.public_url or tunnel_manager.lan_url)
+    )
+    generate_qr_code(target_url, no_qr=no_qr)
 
     if expire_seconds:
         print(f"[*] Server is running for {expire_seconds} seconds. Press 'q' or Ctrl+C to stop.\n")
@@ -240,8 +240,8 @@ def parse_args():
         epilog="""
 Examples:
   qrtunnel                        # Start interactive TUI (default)
-  qrtunnel send photo.jpg         # Share a file using Smart Mode
-  qrtunnel send docs/ -lan -8080  # Share directory on LAN using port 8080
+  qrtunnel send photo.jpg         # Share a file on local Wi-Fi (LAN)
+  qrtunnel send docs/ -cloudflare # Share directory via Cloudflare tunnel
   qrtunnel receive ./uploads      # Receive files into a specific folder
   qrtunnel receive -ngrok         # Receive files via ngrok tunnel
 """,
@@ -267,10 +267,7 @@ Examples:
         g = p.add_argument_group("Tunneling Options")
         m = g.add_mutually_exclusive_group()
         m.add_argument(
-            "-smart", action="store_true", help="Smart Mode: LAN + Public Tunnel (Auto fallback)"
-        )
-        m.add_argument(
-            "-lan", action="store_true", help="LAN Only: Fast local transfer (same Wi-Fi)"
+            "-lan", action="store_true", help="LAN Only: Fast local transfer (same Wi-Fi) [default]"
         )
         m.add_argument(
             "-ssh", action="store_true", help="SSH Tunnel: No-auth public link (localhost.run)"
@@ -377,14 +374,16 @@ def main():
         os.chdir(target_dir)  # Switch to dest dir for receiving
         file_paths = []
 
-    # Determine Mode
-    mode_name = "Smart"
-    if args.lan:
-        mode_name = "LAN"
+    # Determine Mode (Default to LAN)
+    mode_name = "LAN"
+    if args.cloudflare:
+        mode_name = "Cloudflare"
     elif args.ssh:
         mode_name = "SSH"
     elif args.ngrok:
         mode_name = "Ngrok"
+    elif args.lan:
+        mode_name = "LAN"
 
     # Confirmation
     print("\n" + "=" * 60)

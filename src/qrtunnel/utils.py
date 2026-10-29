@@ -125,6 +125,7 @@ def get_lan_ip():
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
@@ -154,3 +155,79 @@ def is_same_lan(client_ip, server_ip):
         return s_ip in c_net
     except Exception:
         return False
+
+
+_CACHED_PUBLIC_IP = None
+
+
+def get_public_ip(timeout=2.0):
+    """Fetch the host's public WAN IP for same-network matching."""
+    global _CACHED_PUBLIC_IP
+    if _CACHED_PUBLIC_IP:
+        return _CACHED_PUBLIC_IP
+    try:
+        import urllib.request
+
+        req = urllib.request.Request("https://api.ipify.org", headers={"User-Agent": "qrtunnel"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            ip = resp.read().decode("utf-8").strip()
+            if ip:
+                _CACHED_PUBLIC_IP = ip
+                return _CACHED_PUBLIC_IP
+    except Exception:
+        pass
+    return None
+
+
+def get_host_ipv6_subnets():
+    """Retrieve all global IPv6 /64 subnets configured on the host's interfaces."""
+    subnets = []
+    try:
+        hostname = socket.gethostname()
+        for res in socket.getaddrinfo(hostname, None, socket.AF_INET6):
+            ip_str = res[4][0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_global and not ip.is_link_local:
+                net = ipaddress.ip_network(f"{ip_str}/64", strict=False)
+                if net not in subnets:
+                    subnets.append(net)
+    except Exception:
+        pass
+    return subnets
+
+
+def is_same_network(client_ip, server_lan_ip=None):
+    """Determine whether client_ip belongs to the same local network or Wi-Fi as the host."""
+    if not client_ip or client_ip in ("127.0.0.1", "::1"):
+        return False
+
+    try:
+        c_ip = ipaddress.ip_address(client_ip)
+    except Exception:
+        return False
+
+    # Check direct LAN if private IP
+    if c_ip.is_private:
+        if server_lan_ip and is_same_lan(client_ip, server_lan_ip):
+            return True
+
+    # Check IPv6 global prefix matching (/64)
+    if c_ip.version == 6:
+        for subnet in get_host_ipv6_subnets():
+            try:
+                if c_ip in subnet:
+                    return True
+            except Exception:
+                pass
+
+    # Check Public IPv4 WAN matching
+    public_ip = get_public_ip()
+    if public_ip:
+        try:
+            p_ip = ipaddress.ip_address(public_ip)
+            if c_ip == p_ip:
+                return True
+        except Exception:
+            pass
+
+    return False

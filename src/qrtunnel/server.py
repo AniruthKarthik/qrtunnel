@@ -2,9 +2,11 @@
 
 import http.cookies
 import io
+import mimetypes
 import os
 import platform
 import re
+import threading
 import time
 import uuid
 import zipfile
@@ -14,13 +16,77 @@ from socketserver import ThreadingMixIn
 from urllib.parse import unquote, urlparse
 
 from streaming_form_data import StreamingFormDataParser
-from streaming_form_data.targets import FileTarget
+from streaming_form_data.targets import BaseTarget
 
 from .config import Config
 from .constants import ERR, INFO, OK, WRN
 from .history import log_transfer
 from .streams import LimitedStream
-from .utils import format_progress, is_same_lan, sha256_file
+from .utils import (
+    format_progress,
+    format_size,
+    is_same_lan,
+    is_same_network,
+    sha256_file,
+)
+
+_stdout_lock = threading.Lock()
+
+
+class MultiFileTarget(BaseTarget):
+    """StreamingFormData target that handles multiple uploaded files."""
+
+    def __init__(self, upload_dir):
+        super().__init__()
+        self.upload_dir = Path(upload_dir)
+        self.files = []
+        self._current_fd = None
+        self._current_tmp = None
+        self._current_filename = None
+
+    def on_start(self):
+        self._current_filename = self.multipart_filename
+        if self._current_filename and self._current_filename.strip():
+            self._current_tmp = self.upload_dir / f"upload_{uuid.uuid4().hex}.tmp"
+            self._current_fd = open(self._current_tmp, "wb")
+        else:
+            self._current_tmp = None
+            self._current_fd = None
+
+    def on_data_received(self, chunk: bytes):
+        if self._current_fd:
+            self._current_fd.write(chunk)
+
+    def on_finish(self):
+        if self._current_fd:
+            self._current_fd.close()
+            self._current_fd = None
+            if self._current_filename and self._current_filename.strip():
+                self.files.append((self._current_filename, self._current_tmp))
+            elif self._current_tmp and self._current_tmp.exists():
+                try:
+                    self._current_tmp.unlink()
+                except Exception:
+                    pass
+
+    def cleanup(self):
+        if self._current_fd:
+            try:
+                self._current_fd.close()
+            except Exception:
+                pass
+            self._current_fd = None
+        for _, tmp_path in self.files:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
+        if self._current_tmp and self._current_tmp.exists():
+            try:
+                self._current_tmp.unlink()
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────
@@ -40,7 +106,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         now = time.monotonic()
         if not force and now - last_update < 0.25:
             return last_update
-        print(f"\r[*] {label}: {format_progress(transferred, total)}", end="", flush=True)
+        with _stdout_lock:
+            # \033[K clears from cursor position to the end of the line
+            print(f"\r\033[K[*] {label}: {format_progress(transferred, total)}", end="", flush=True)
         return now
 
     # ── auth ──
@@ -49,6 +117,17 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             return True
         if self.path == "/ping" or self.path.startswith("/ping?"):
             return True
+        # Allow token in query parameter for seamless transition from Tunnel to LAN
+        try:
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            params = parse_qs(parsed.query)
+            token = params.get("auth", [None])[0]
+            if token and token in self.authorized_sessions:
+                return True
+        except Exception:
+            pass
         cookie_header = self.headers.get("Cookie")
         if cookie_header:
             try:
@@ -80,56 +159,95 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 print(f"{OK} Auth success from {self.client_address[0]}")
             else:
                 print(f"{WRN} Failed auth attempt from {self.client_address[0]}")
-                self.send_login_page(error="Incorrect password")
+                self.send_login_page(error="Incorrect 4-digit code")
         except Exception as e:
             print(f"{ERR} Auth error: {e}")
             self.send_error(500, "Internal Server Error")
 
     def send_login_page(self, error=None):
-        error_html = f'<p class="error">{error}</p>' if error else ""
+        error_html = f'<div class="error">{error}</div>' if error else ""
         html = f"""<!DOCTYPE html>
-<html><head>
+<html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - Security Check</title>
 <style>
-body {{ font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee;
-       display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
-.box {{ background: #16213e; padding: 40px; border-radius: 8px; text-align: center;
-        width: 100%; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }}
-input {{ width: 100%; padding: 12px; margin: 20px 0; background: #0f0f1a; border: 1px solid #2a3a5e;
-         color: white; border-radius: 4px; font-size: 18px; text-align: center; letter-spacing: 2px; }}
-button {{ width: 100%; padding: 12px; background: #4361ee; color: white; border: none;
-          border-radius: 4px; font-size: 16px; cursor: pointer; }}
-button:hover {{ background: #3a56d4; }}
-.error {{ color: #ff4757; margin-bottom: 10px; }}
-h2 {{ margin-top: 0; }}
+* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
+.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:380px; width:100%; text-align:center; }}
+.badge-icon {{ display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:14px; }}
+h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-spacing:-0.3px; }}
+.subtitle {{ font-size:14px; color:#64748b; margin-bottom:20px; line-height:1.4; }}
+.error {{ color:#dc2626; font-size:13px; font-weight:500; margin-bottom:14px; background:#fef2f2;
+         border:1px solid #fecaca; border-radius:8px; padding:8px 12px; }}
+input {{ width:100%; padding:14px; margin-bottom:16px; background:#f8fafc; border:1.5px solid #cbd5e1;
+        color:#0f172a; border-radius:10px; font-size:26px; font-weight:700; text-align:center;
+        letter-spacing:6px; font-family:monospace; outline:none; transition:border-color 0.15s, box-shadow 0.15s; }}
+input:focus {{ border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.12); }}
+button {{ width:100%; padding:14px 20px; background:#2563eb; color:#fff; border:none; border-radius:10px;
+         font-size:15px; font-weight:600; cursor:pointer; transition:background 0.15s, transform 0.1s; }}
+button:hover {{ background:#1d4ed8; }}
+button:active {{ transform:scale(0.99); }}
+.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
 </style></head><body>
-<div class="box">
-<h2>🔒 Restricted Access</h2>
-<p>Please enter the 6-digit code shown on the host screen.</p>
+<div class="container">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+</div>
+<h1>Security Check</h1>
+<p class="subtitle">Enter the 4-digit access code shown on the host computer.</p>
 {error_html}
 <form action="/login" method="post">
 <input type="text" name="password" pattern="[0-9]*" inputmode="numeric"
-       placeholder="000000" maxlength="6" required autofocus autocomplete="off">
-<button type="submit">Verify</button>
+       placeholder="0000" maxlength="4" required autofocus autocomplete="off">
+<button type="submit">Verify Code</button>
 </form>
+<p class="footer">qrtunnel</p>
 </div></body></html>"""
         self.send_response(200 if not error else 403)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", str(len(html)))
+        self.send_header("Content-Length", str(len(html.encode())))
         self.end_headers()
         self.wfile.write(html.encode())
+
+    # ── client network detection ──
+    def get_real_client_ip(self):
+        cf_ip = self.headers.get("CF-Connecting-IP")
+        if cf_ip:
+            return cf_ip.strip()
+        xff = self.headers.get("X-Forwarded-For")
+        if xff:
+            return xff.split(",")[0].strip()
+        x_real = self.headers.get("X-Real-IP")
+        if x_real:
+            return x_real.strip()
+        return self.client_address[0]
+
+    def is_tunnel_request(self):
+        return bool(
+            self.headers.get("CF-Connecting-IP")
+            or self.headers.get("X-Forwarded-For")
+            or self.headers.get("X-Real-IP")
+        )
+
+    def is_request_from_same_lan(self):
+        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
+        if not lan_ip or lan_ip in ("None", "127.0.0.1"):
+            return False
+        real_ip = self.get_real_client_ip()
+        return is_same_network(real_ip, lan_ip)
 
     # ── logging ──
     def log_message(self, format, *args):
         client_ip = self.client_address[0]
+        real_ip = self.get_real_client_ip()
 
-        # Check for forwarded IP (tunnels)
-        forwarded_for = self.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            # X-Forwarded-For can be a list, take the first one
-            real_ip = forwarded_for.split(",")[0].strip()
+        if self.is_tunnel_request():
             conn_type = f"{INFO} Tunnel"
             display_ip = real_ip
         else:
@@ -141,7 +259,7 @@ h2 {{ margin-top: 0; }}
                 conn_type = f"{OK} LAN"
                 display_ip = client_ip
             else:
-                conn_type = f"{INFO} Tunnel"
+                conn_type = f"{INFO} Remote"
                 display_ip = client_ip
 
         path = self.path
@@ -189,39 +307,35 @@ h2 {{ margin-top: 0; }}
         self.end_headers()
         self.wfile.write(gif)
 
-    # ── smart redirect JS ──
-    def get_smart_redirect_js(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
-        if not lan_ip or lan_ip in ("None", "127.0.0.1"):
-            return ""
-        return f"""
-    <script>
-        (function() {{
-            var lanIp = "{lan_ip}";
-            var lanPort = {Config.LOCAL_PORT};
-            var lanUrl = "http://" + lanIp + ":" + lanPort;
-            if (window.location.hostname !== lanIp) {{
-                var img = new Image();
-                img.onload = function() {{
-                    setTimeout(function() {{
-                        window.location.href = lanUrl + window.location.pathname + window.location.search;
-                    }}, 100);
-                }};
-                img.src = lanUrl + "/ping?t=" + Date.now();
-            }}
-        }})();
-    </script>"""
+    def _send_auth_cookie_if_needed(self):
+        try:
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            token = parse_qs(parsed.query).get("auth", [None])[0]
+            if token and token in self.authorized_sessions:
+                self.send_header("Set-Cookie", f"session={token}; Path=/; HttpOnly; Max-Age=86400")
+        except Exception:
+            pass
 
     # ── upload handler ──
     def handle_upload(self):
+        target = None
         try:
-            content_length = int(self.headers["Content-Length"])
+            content_length_str = self.headers.get("Content-Length")
+            if not content_length_str:
+                self.send_error(411, "Length Required")
+                return
+            try:
+                content_length = int(content_length_str)
+            except ValueError:
+                self.send_error(400, "Invalid Content-Length")
+                return
+
             stream = LimitedStream(self.rfile, content_length)
             parser = StreamingFormDataParser(headers=self.headers)
-            temp_filename = f"upload_{int(time.time())}.tmp"
-            temp_path = Path.cwd() / temp_filename
-            file_target = FileTarget(str(temp_path))
-            parser.register("file", file_target)
+            target = MultiFileTarget(Path.cwd())
+            parser.register("file", target)
             chunk_size = 65536
             received = 0
             last_update = 0
@@ -236,219 +350,638 @@ h2 {{ margin-top: 0; }}
                 )
             self.print_progress("Upload", received, content_length, force=True)
             print()
-            if not getattr(file_target, "multipart_filename", None):
-                self.send_error(400, "File not found in form data")
+
+            if not target.files:
+                target.cleanup()
+                self.send_error(400, "No files found in form data")
                 return
-            sanitized_filename = os.path.basename(unquote(file_target.multipart_filename))
-            if not sanitized_filename:
-                self.send_error(400, "Invalid filename")
-                return
-            final_path = Path.cwd() / sanitized_filename
-            os.rename(temp_path, final_path)
-            print(f"{OK} File '{sanitized_filename}' received and saved to {final_path}")
-            print(f"{OK} SHA256: {sha256_file(final_path)}")
-            log_transfer(
-                sanitized_filename,
-                os.path.getsize(final_path),
-                self.client_address[0],
-                "receive",
-            )
+
+            saved_files = []
+            for raw_filename, tmp_path in target.files:
+                sanitized_filename = os.path.basename(unquote(raw_filename))
+                if not sanitized_filename:
+                    sanitized_filename = "uploaded_file"
+
+                # Avoid silent overwrite by deduplicating filename
+                base_stem = Path(sanitized_filename).stem
+                base_ext = Path(sanitized_filename).suffix
+                saved_filename = sanitized_filename
+                counter = 1
+                final_path = Path.cwd() / saved_filename
+                while final_path.exists():
+                    saved_filename = f"{base_stem} ({counter}){base_ext}"
+                    final_path = Path.cwd() / saved_filename
+                    counter += 1
+
+                os.rename(tmp_path, final_path)
+                file_size = os.path.getsize(final_path)
+                saved_files.append((saved_filename, file_size))
+                print(f"{OK} File '{saved_filename}' received and saved to {final_path}")
+                print(f"{OK} SHA256: {sha256_file(final_path)}")
+                log_transfer(
+                    saved_filename,
+                    file_size,
+                    self.client_address[0],
+                    "receive",
+                )
+
             self.send_response(200)
             self.send_header("Content-type", "text/html")
-            success_html = self.get_upload_success_page(sanitized_filename)
-            self.send_header("Content-Length", str(len(success_html)))
+            success_html = self.get_upload_success_page(saved_files)
+            self.send_header("Content-Length", str(len(success_html.encode())))
+            self._send_auth_cookie_if_needed()
             self.end_headers()
             self.wfile.write(success_html.encode())
             self.close_connection = True
         except Exception as e:
+            if target:
+                target.cleanup()
             print(f"{ERR} Error during upload: {e}")
             self.send_error(500, "Internal Server Error")
 
-    def get_upload_success_page(self, filename):
+    def get_upload_success_page(self, files):
+        if isinstance(files, str):
+            file_items = [(files, None)]
+        elif isinstance(files, list):
+            file_items = [
+                (item[0], item[1]) if isinstance(item, (tuple, list)) else (str(item), None)
+                for item in files
+            ]
+        else:
+            file_items = [(str(files), None)]
+
+        total_files = len(file_items)
+        if total_files == 1:
+            fn, sz = file_items[0]
+            label = f"{fn} ({format_size(sz)})" if sz is not None else fn
+            subtitle = "The file was successfully received on the host computer."
+            content_html = f'<div class="file-badge">{label}</div>'
+            btn_label = "Upload Another File"
+        else:
+            subtitle = f"{total_files} files were successfully received on the host computer."
+            items_html = ""
+            for fn, sz in file_items:
+                sz_str = (
+                    f' <span style="color:#64748b;font-weight:400;">({format_size(sz)})</span>'
+                    if sz is not None
+                    else ""
+                )
+                items_html += f'<li style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:#0f172a;word-break:break-all;"><span style="text-align:left;">✓ {fn}</span>{sz_str}</li>'
+            content_html = f'<ul style="list-style:none;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;margin:16px 0 24px;max-height:220px;overflow-y:auto;text-align:left;">{items_html}</ul>'
+            btn_label = "Upload More Files"
+
         return f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>qrtunnel - Upload Success</title>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>qrtunnel - Upload Complete</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.success-message {{ text-align:center; margin-bottom:20px; color:#4CAF50; font-size:1.2em; }}
-.link-button {{ display:block; width:100%; padding:16px 24px; background:#4361ee; color:#fff;
-                border:none; border-radius:6px; font-size:15px; font-weight:500; cursor:pointer;
-                text-decoration:none; text-align:center; transition:background 0.2s; margin-top:20px; }}
-.link-button:hover {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
+.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:36px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:440px; width:100%; text-align:center; }}
+.success-icon {{ display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px;
+                border-radius:50%; background:#dcfce7; color:#16a34a; margin-bottom:16px; }}
+h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-spacing:-0.3px; }}
+.subtitle {{ font-size:14px; color:#64748b; line-height:1.4; }}
+.file-badge {{ display:inline-block; font-size:13px; font-weight:600; color:#0f172a; background:#f1f5f9;
+              border:1px solid #e2e8f0; padding:8px 14px; border-radius:10px; margin:16px 0 24px;
+              word-break:break-all; max-width:100%; }}
+.button {{ display:flex; align-items:center; justify-content:center; width:100%; padding:14px 20px;
+          background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px;
+          font-weight:600; text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s;
+          box-shadow:0 1px 2px rgba(37,99,235,0.2); }}
+.button:hover {{ background:#1d4ed8; }}
+.button:active {{ transform:scale(0.99); }}
+.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Upload Status</h1></div>
-<div class="success-message"><p>File '<strong>{filename}</strong>' uploaded successfully!</p></div>
-<a href="/" class="link-button">Upload Another File</a>
+<div class="success-icon">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+</div>
+<h1>Upload Complete</h1>
+<p class="subtitle">{subtitle}</p>
+{content_html}
+<a href="/" class="button">{btn_label}</a>
 <p class="footer">qrtunnel</p>
 </div></body></html>"""
 
     def send_upload_page(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
-        html = f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        html = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - File Upload</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.subtitle {{ font-size:14px; color:#888; }}
-.upload-form {{ display:flex; flex-direction:column; gap:20px; }}
-.file-input-wrapper {{ position:relative; width:100%; padding:16px 24px; background:#0f0f1a;
-                       border:1px dashed #4361ee; border-radius:6px; text-align:center;
-                       cursor:pointer; transition:background 0.2s, border-color 0.2s; }}
-.file-input-wrapper:hover {{ background:#1f1f2a; border-color:#5a78ff; }}
-#file-input {{ opacity:0; position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; }}
-.file-input-label {{ font-size:14px; font-weight:500; color:#ccc; }}
-#file-name {{ margin-top:12px; font-size:12px; font-family:'SF Mono','Consolas',monospace; color:#888; }}
-.submit-button {{ display:block; width:100%; padding:16px 24px; background:#4361ee; color:#fff;
-                  border:none; border-radius:6px; font-size:15px; font-weight:500; cursor:pointer;
-                  text-align:center; transition:background 0.2s; opacity:0.5; pointer-events:none; }}
-.submit-button.enabled {{ opacity:1; pointer-events:auto; }}
-.submit-button:hover.enabled {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
+.container { background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:440px; width:100%; }
+@media (max-width:480px) { .container { padding:24px 18px; border-radius:14px; } }
+.header { text-align:center; margin-bottom:24px; }
+.badge-icon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }
+h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }
+.subtitle { font-size:14px; color:#64748b; font-weight:400; }
+.upload-form { display:flex; flex-direction:column; gap:16px; }
+.file-drop-area { position:relative; border:2px dashed #cbd5e1; border-radius:14px; padding:32px 16px;
+                  text-align:center; background:#f8fafc; cursor:pointer; transition:all 0.15s ease; }
+.file-drop-area:hover, .file-drop-area.dragover { border-color:#2563eb; background:#eff6ff; }
+#file-input { position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.drop-icon { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
+             border-radius:10px; background:#fff; border:1px solid #e2e8f0; color:#2563eb;
+             margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+.drop-text { font-size:14px; font-weight:600; color:#0f172a; margin-bottom:2px; }
+.drop-hint { font-size:12px; color:#64748b; }
+.file-preview-area { margin-top:12px; text-align:left; }
+.file-summary { font-size:13px; font-weight:600; color:#2563eb; margin-bottom:8px; text-align:center; }
+.file-list-preview { list-style:none; border:1px solid #e2e8f0; border-radius:10px; max-height:160px; overflow-y:auto; background:#ffffff; }
+.file-list-preview li { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:12px; color:#0f172a; }
+.file-list-preview li:last-child { border-bottom:none; }
+.file-preview-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%; }
+.file-preview-size { color:#64748b; font-size:11px; white-space:nowrap; }
+.progress-container { display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+.progress-bar-bg { background:#e2e8f0; border-radius:6px; height:8px; overflow:hidden; }
+.progress-bar-fill { background:#2563eb; height:100%; width:0%; transition:width 0.15s ease; border-radius:6px; }
+.progress-info { display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#64748b; font-weight:500; }
+.submit-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+                 background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
+                 cursor:pointer; transition:all 0.15s; opacity:0.4; pointer-events:none; }
+.submit-button.enabled { opacity:1; pointer-events:auto; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
+.submit-button.enabled:hover { background:#1d4ed8; }
+.submit-button.enabled:active { transform:scale(0.99); }
+.footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Upload File</h1><p class="subtitle">Select a file to send to this computer</p></div>
+<div class="header">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+</div>
+<h1>Send Files</h1>
+<p class="subtitle">Select files to send to this computer</p>
+</div>
 <form id="upload-form" class="upload-form" action="/upload" method="post" enctype="multipart/form-data">
-<div class="file-input-wrapper">
-<label for="file-input" class="file-input-label">Click to select a file</label>
-<input type="file" id="file-input" name="file" required>
-<p id="file-name"></p>
+<div class="file-drop-area" id="drop-area">
+  <input type="file" id="file-input" name="file" multiple required>
+  <div class="drop-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  </div>
+  <p class="drop-text" id="drop-text">Tap to select files</p>
+  <p class="drop-hint">or drag and drop multiple files here</p>
 </div>
-<button type="submit" id="submit-btn" class="submit-button">Upload</button>
+<div id="file-preview-area" class="file-preview-area" style="display:none;">
+  <div id="file-summary" class="file-summary"></div>
+  <ul id="file-list-preview" class="file-list-preview"></ul>
+</div>
+<div id="progress-container" class="progress-container">
+  <div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
+  <div class="progress-info">
+    <span id="progress-pct">0%</span>
+    <span id="progress-speed">0 B/s</span>
+    <span id="progress-stats">0 B / 0 B</span>
+  </div>
+</div>
+<button type="submit" id="submit-btn" class="submit-button">Upload Files</button>
 </form>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
-</div>
 <p class="footer">qrtunnel</p>
 </div>
 <script>
 const fileInput = document.getElementById('file-input');
-const fileNameDisplay = document.getElementById('file-name');
+const dropText = document.getElementById('drop-text');
+const filePreviewArea = document.getElementById('file-preview-area');
+const fileSummary = document.getElementById('file-summary');
+const fileListPreview = document.getElementById('file-list-preview');
 const submitButton = document.getElementById('submit-btn');
-fileInput.addEventListener('change', () => {{
-    if (fileInput.files.length > 0) {{
-        fileNameDisplay.textContent = 'Selected: ' + fileInput.files[0].name;
+const uploadForm = document.getElementById('upload-form');
+const progressContainer = document.getElementById('progress-container');
+const progressBar = document.getElementById('progress-bar');
+const progressPct = document.getElementById('progress-pct');
+const progressSpeed = document.getElementById('progress-speed');
+const progressStats = document.getElementById('progress-stats');
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    var mb = kb / 1024;
+    if (mb < 1024) return mb.toFixed(1) + ' MB';
+    var gb = mb / 1024;
+    return gb.toFixed(1) + ' GB';
+}
+
+fileInput.addEventListener('change', () => {
+    fileListPreview.innerHTML = '';
+    if (fileInput.files.length > 0) {
+        var totalBytes = 0;
+        for (var i = 0; i < fileInput.files.length; i++) {
+            totalBytes += fileInput.files[i].size;
+            var li = document.createElement('li');
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'file-preview-name';
+            nameSpan.textContent = fileInput.files[i].name;
+            var sizeSpan = document.createElement('span');
+            sizeSpan.className = 'file-preview-size';
+            sizeSpan.textContent = formatBytes(fileInput.files[i].size);
+            li.appendChild(nameSpan);
+            li.appendChild(sizeSpan);
+            fileListPreview.appendChild(li);
+        }
+        if (fileInput.files.length === 1) {
+            fileSummary.textContent = '1 file selected (' + formatBytes(totalBytes) + ')';
+            submitButton.textContent = 'Upload File';
+        } else {
+            fileSummary.textContent = fileInput.files.length + ' files selected (' + formatBytes(totalBytes) + ')';
+            submitButton.textContent = 'Upload ' + fileInput.files.length + ' Files';
+        }
+        filePreviewArea.style.display = 'block';
+        dropText.textContent = fileInput.files.length === 1 ? 'Change selected file' : 'Change selected files';
         submitButton.classList.add('enabled');
-    }} else {{
-        fileNameDisplay.textContent = '';
+    } else {
+        filePreviewArea.style.display = 'none';
+        dropText.textContent = 'Tap to select files';
+        submitButton.textContent = 'Upload Files';
         submitButton.classList.remove('enabled');
-    }}
-}});
-(function() {{
-    var lanIp = "{lan_ip}";
-    var lanPort = {Config.LOCAL_PORT};
-    var lanUrl = "http://" + lanIp + ":" + lanPort;
-    if (lanIp && lanIp !== "None" && window.location.hostname !== lanIp) {{
-        var discoveryDiv = document.getElementById('lan-discovery');
-        var lanBtn = document.getElementById('lan-btn');
-        var img = new Image();
-        img.onload = function() {{
-            discoveryDiv.style.display = 'block';
-            lanBtn.href = lanUrl + window.location.pathname + window.location.search;
-        }};
-        img.src = lanUrl + "/ping?t=" + Date.now();
-    }}
-}})();
+    }
+});
+
+uploadForm.addEventListener('submit', (e) => {
+    if (!fileInput.files.length) return;
+    e.preventDefault();
+    submitButton.classList.remove('enabled');
+    submitButton.style.opacity = '0.4';
+    submitButton.style.pointerEvents = 'none';
+    submitButton.textContent = 'Uploading...';
+    progressContainer.style.display = 'block';
+
+    var formData = new FormData();
+    for (var i = 0; i < fileInput.files.length; i++) {
+        formData.append('file', fileInput.files[i]);
+    }
+
+    var xhr = new XMLHttpRequest();
+    var lastLoaded = 0;
+    var lastTime = Date.now();
+
+    xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+            var now = Date.now();
+            var pct = ((ev.loaded / ev.total) * 100).toFixed(1);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressStats.textContent = formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total);
+
+            var elapsedSec = (now - lastTime) / 1000;
+            if (elapsedSec >= 0.4) {
+                var speed = (ev.loaded - lastLoaded) / elapsedSec;
+                progressSpeed.textContent = formatBytes(speed) + '/s';
+                lastLoaded = ev.loaded;
+                lastTime = now;
+            }
+
+            if (ev.loaded >= ev.total) {
+                submitButton.textContent = 'Processing on server...';
+            }
+        }
+    };
+
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            document.open();
+            document.write(xhr.responseText);
+            document.close();
+        } else {
+            alert('Upload failed: ' + xhr.statusText);
+            submitButton.classList.add('enabled');
+            submitButton.style.opacity = '1';
+            submitButton.style.pointerEvents = 'auto';
+            submitButton.textContent = 'Upload Files';
+        }
+    };
+
+    xhr.onerror = () => {
+        alert('Network error occurred during upload.');
+        submitButton.classList.add('enabled');
+        submitButton.style.opacity = '1';
+        submitButton.style.pointerEvents = 'auto';
+        submitButton.textContent = 'Upload Files';
+    };
+
+    xhr.open('POST', '/upload', true);
+    xhr.send(formData);
+});
 </script>
-{self.get_smart_redirect_js()}
 </body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", len(html.encode()))
+        self.send_header("Content-Length", str(len(html.encode())))
+        self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
 
     # ── download page ──
     def send_download_page(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
         file_list_html = ""
-        for fp in self.file_paths:
+        basenames = [os.path.basename(fp) for fp in self.file_paths]
+        has_duplicates = len(basenames) != len(set(basenames))
+        for idx, fp in enumerate(self.file_paths):
             fn = os.path.basename(fp)
-            file_list_html += f'<li><a href="/download/{fn}" class="file-link">{fn}</a></li>'
-        zip_link_html = ""
-        if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
-            zip_link_html = '<a href="/download/all.zip" class="zip-link">Download all as ZIP</a>'
-        html = f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+            href_path = f"/download/{idx}/{fn}" if has_duplicates else f"/download/{fn}"
+            display_name = f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
+            size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
+            file_list_html += f"""<li class="file-item">
+  <div class="file-cb-wrap">
+    <input type="checkbox" class="file-cb" id="cb-{idx}" data-idx="{idx}" data-name="{fn}">
+  </div>
+  <label for="cb-{idx}" class="file-info" title="Select {display_name}">
+    <svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    <span class="file-name">{display_name}</span>
+  </label>
+  <div class="file-meta">
+    <span class="file-size">{size_label}</span>
+    <a href="{href_path}" class="dl-single-btn" download title="Download this file individually">
+      <svg class="dl-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </a>
+  </div>
+</li>"""
+        template = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - File Download</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.subtitle {{ font-size:14px; color:#888; }}
-.file-section {{ margin-bottom:32px; }}
-.file-section-title {{ font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#666; margin-bottom:12px; }}
-.file-list {{ list-style:none; background:#0f0f1a; border-radius:6px; border:1px solid #2a3a5e; }}
-.file-list li {{ border-bottom:1px solid #2a3a5e; }}
-.file-list li:last-child {{ border-bottom:none; }}
-.file-link {{ display:block; padding:12px 16px; font-size:14px;
-              font-family:'SF Mono','Consolas',monospace; color:#ccc;
-              text-decoration:none; transition:background-color 0.2s; }}
-.file-link:hover {{ background-color:#2a3a5e; }}
-.zip-link {{ display:block; margin-top:16px; padding:12px 16px; background:#4361ee; color:#fff;
-             border-radius:6px; text-decoration:none; text-align:center; font-size:14px; }}
-.zip-link:hover {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
+.container { background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:440px; width:100%; }
+@media (max-width:480px) { .container { padding:24px 18px; border-radius:14px; } }
+.header { text-align:center; margin-bottom:24px; }
+.badge-icon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }
+h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }
+.subtitle { font-size:14px; color:#64748b; font-weight:400; }
+.file-section { margin-bottom:20px; }
+.file-section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.select-btn { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.select-btn:hover { background:#dbeafe; }
+.file-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; }
+.file-count-badge { font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }
+.file-list { list-style:none; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#ffffff; }
+.file-list li { border-bottom:1px solid #f1f5f9; display:flex; align-items:center; padding:10px 14px; min-height:48px; gap:10px; }
+.file-list li:last-child { border-bottom:none; }
+.file-cb-wrap { display:flex; align-items:center; justify-content:center; }
+.file-cb { width:17px; height:17px; accent-color:#2563eb; cursor:pointer; }
+.file-info { display:flex; align-items:center; gap:8px; overflow:hidden; min-width:0; flex:1; cursor:pointer; user-select:none; }
+.file-icon { color:#64748b; flex-shrink:0; }
+.file-name { font-size:14px; font-weight:500; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.file-size { font-size:12px; color:#64748b; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:500; white-space:nowrap; }
+.dl-single-btn { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; color:#2563eb; text-decoration:none; transition:all 0.15s; }
+.dl-single-btn:hover { background:#2563eb; color:#ffffff; border-color:#2563eb; }
+.dl-arrow { flex-shrink:0; }
+.selected-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+                  background:#059669; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
+                  cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:14px; box-shadow:0 1px 2px rgba(5,150,105,0.2); }
+.selected-button:hover { background:#047857; }
+.selected-button:active { transform:scale(0.99); }
+.progress-container { display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-top:14px; text-align:left; }
+.progress-status { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.spinner { width:14px; height:14px; border:2px solid #cbd5e1; border-top-color:#2563eb; border-radius:50%; animation:spin 0.75s linear infinite; display:inline-block; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.progress-bar-bg { background:#e2e8f0; border-radius:6px; height:8px; overflow:hidden; }
+.progress-bar-fill { background:#2563eb; height:100%; width:0%; transition:width 0.15s ease; border-radius:6px; }
+.progress-info { display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#64748b; font-weight:500; }
+.footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Files Ready</h1><p class="subtitle">Click a file to download</p></div>
-<div class="file-section">
-<p class="file-section-title">Files ({len(self.file_paths)})</p>
-<ul class="file-list">{file_list_html}</ul>
-{zip_link_html}
+<div class="header">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 </div>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
+<h1>Download Files</h1>
+<p class="subtitle">Download files individually or select files to bundle as a zip</p>
+</div>
+<div class="file-section">
+<div class="file-section-header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button type="button" id="select-all-btn" class="select-btn">Select All</button>
+    <span class="file-section-title">Files</span>
+  </div>
+  <span class="file-count-badge">__FILE_COUNT__</span>
+</div>
+<ul class="file-list">__FILE_LIST__</ul>
+<div id="progress-container" class="progress-container">
+  <div class="progress-status" id="progress-status">
+    <span class="spinner" id="progress-spinner"></span>
+    <span id="progress-status-text">Zipping selected files on host...</span>
+  </div>
+  <div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
+  <div class="progress-info">
+    <span id="progress-pct">0%</span>
+    <span id="progress-speed">0 B/s</span>
+    <span id="progress-stats">0 B / 0 B</span>
+  </div>
+</div>
+<button type="button" id="download-selected-btn" class="selected-button" style="display:none;">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+  <span id="selected-btn-text">Download Selected (.zip)</span>
+</button>
 </div>
 <p class="footer">qrtunnel</p>
 </div>
 <script>
-(function() {{
-    var lanIp = "{lan_ip}";
-    var lanPort = {Config.LOCAL_PORT};
-    var lanUrl = "http://" + lanIp + ":" + lanPort;
-    if (lanIp && lanIp !== "None" && window.location.hostname !== lanIp) {{
-        var discoveryDiv = document.getElementById('lan-discovery');
-        var lanBtn = document.getElementById('lan-btn');
-        var img = new Image();
-        img.onload = function() {{
-            discoveryDiv.style.display = 'block';
-            lanBtn.href = lanUrl + window.location.pathname + window.location.search;
-        }};
-        img.src = lanUrl + "/ping?t=" + Date.now();
-    }}
-}})();
+const checkboxes = document.querySelectorAll('.file-cb');
+const selectAllBtn = document.getElementById('select-all-btn');
+const dlSelectedBtn = document.getElementById('download-selected-btn');
+const selectedBtnText = document.getElementById('selected-btn-text');
+const progressContainer = document.getElementById('progress-container');
+const progressStatusText = document.getElementById('progress-status-text');
+const progressSpinner = document.getElementById('progress-spinner');
+const progressBar = document.getElementById('progress-bar');
+const progressPct = document.getElementById('progress-pct');
+const progressSpeed = document.getElementById('progress-speed');
+const progressStats = document.getElementById('progress-stats');
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    var mb = kb / 1024;
+    if (mb < 1024) return mb.toFixed(1) + ' MB';
+    var gb = mb / 1024;
+    return gb.toFixed(1) + ' GB';
+}
+
+function updateSelection() {
+    var checked = Array.from(checkboxes).filter(cb => cb.checked);
+    var count = checked.length;
+    if (count > 0) {
+        dlSelectedBtn.style.display = 'flex';
+        selectedBtnText.textContent = count === 1 ? 'Download Selected (1 file as .zip)' : 'Download Selected (' + count + ' files as .zip)';
+    } else {
+        dlSelectedBtn.style.display = 'none';
+    }
+    if (selectAllBtn) {
+        selectAllBtn.textContent = count === checkboxes.length ? 'Deselect All' : 'Select All';
+    }
+}
+
+checkboxes.forEach(cb => cb.addEventListener('change', updateSelection));
+
+if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+        var allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkboxes.forEach(cb => cb.checked = !allChecked);
+        updateSelection();
+    });
+}
+
+function downloadWithProgress(url, defaultFilename, isZip) {
+    progressContainer.style.display = 'block';
+    progressSpinner.style.display = 'inline-block';
+    progressBar.style.width = '0%';
+    progressPct.textContent = '0%';
+    progressSpeed.textContent = '';
+    progressStats.textContent = isZip ? 'Zipping files on host...' : 'Connecting...';
+    progressStatusText.textContent = isZip ? 'Zipping selected files on host...' : 'Requesting ' + defaultFilename + '...';
+
+    if (dlSelectedBtn) {
+        dlSelectedBtn.style.opacity = '0.5';
+        dlSelectedBtn.style.pointerEvents = 'none';
+        selectedBtnText.textContent = isZip ? 'Zipping in progress...' : 'Downloading...';
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    var lastLoaded = 0;
+    var lastTime = Date.now();
+
+    xhr.onprogress = (ev) => {
+        progressSpinner.style.display = 'none';
+        progressStatusText.textContent = isZip ? 'Downloading ZIP archive...' : 'Downloading ' + defaultFilename + '...';
+
+        if (ev.lengthComputable && ev.total > 0) {
+            var now = Date.now();
+            var pct = ((ev.loaded / ev.total) * 100).toFixed(1);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressStats.textContent = formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total);
+
+            var elapsedSec = (now - lastTime) / 1000;
+            if (elapsedSec >= 0.3) {
+                var speed = (ev.loaded - lastLoaded) / elapsedSec;
+                progressSpeed.textContent = formatBytes(speed) + '/s';
+                lastLoaded = ev.loaded;
+                lastTime = now;
+            }
+        } else {
+            progressPct.textContent = '';
+            progressStats.textContent = formatBytes(ev.loaded) + ' downloaded';
+        }
+    };
+
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            progressBar.style.width = '100%';
+            progressPct.textContent = '100%';
+            progressSpinner.style.display = 'none';
+            progressStatusText.textContent = '✓ Download Complete!';
+
+            var filename = defaultFilename;
+            var disposition = xhr.getResponseHeader('Content-Disposition');
+            if (disposition && disposition.indexOf('filename=') !== -1) {
+                var match = disposition.match(/filename=["']?([^"';]+)["']?/);
+                if (match && match[1]) {
+                    filename = match[1];
+                }
+            }
+
+            var blob = xhr.response;
+            var downloadUrl = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(downloadUrl);
+            }, 500);
+
+            setTimeout(() => {
+                if (dlSelectedBtn) {
+                    dlSelectedBtn.style.opacity = '1';
+                    dlSelectedBtn.style.pointerEvents = 'auto';
+                    updateSelection();
+                }
+            }, 1500);
+        } else {
+            progressSpinner.style.display = 'none';
+            progressStatusText.textContent = '⚠ Download failed (' + xhr.status + ')';
+            alert('Download failed: ' + xhr.statusText);
+            if (dlSelectedBtn) {
+                dlSelectedBtn.style.opacity = '1';
+                dlSelectedBtn.style.pointerEvents = 'auto';
+                updateSelection();
+            }
+        }
+    };
+
+    xhr.onerror = () => {
+        progressSpinner.style.display = 'none';
+        progressStatusText.textContent = '⚠ Network error';
+        alert('Network error occurred during download.');
+        if (dlSelectedBtn) {
+            dlSelectedBtn.style.opacity = '1';
+            dlSelectedBtn.style.pointerEvents = 'auto';
+            updateSelection();
+        }
+    };
+
+    xhr.send();
+}
+
+if (dlSelectedBtn) {
+    dlSelectedBtn.addEventListener('click', () => {
+        var checkedIndices = Array.from(checkboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.getAttribute('data-idx'));
+        if (!checkedIndices.length) return;
+        var url = '/download/selected.zip?files=' + checkedIndices.join(',');
+        downloadWithProgress(url, 'qrtunnel-selected.zip', true);
+    });
+}
+
+document.querySelectorAll('.dl-single-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        var url = btn.getAttribute('href');
+        var row = btn.closest('.file-item');
+        var nameSpan = row ? row.querySelector('.file-name') : null;
+        var displayName = nameSpan ? nameSpan.textContent.trim() : 'file';
+        downloadWithProgress(url, displayName, false);
+    });
+});
 </script>
-{self.get_smart_redirect_js()}
 </body></html>"""
+        html = template.replace("__FILE_LIST__", file_list_html).replace(
+            "__FILE_COUNT__", str(len(self.file_paths))
+        )
         self.send_response(200)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", len(html.encode()))
+        self.send_header("Content-Length", str(len(html.encode())))
+        self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
 
@@ -466,10 +999,11 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
             return False
         return start, min(end, file_size - 1)
 
-    def build_zip_archive(self):
+    def build_zip_archive(self, file_paths=None):
         buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-            for fp in self.file_paths:
+        paths = file_paths if file_paths is not None else self.file_paths
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+            for fp in paths:
                 path = Path(fp)
                 if path.is_dir():
                     for child in path.rglob("*"):
@@ -479,19 +1013,88 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                     archive.write(path, path.name)
         return buffer.getvalue()
 
-    def serve_zip_archive(self):
+    def serve_directory_zip(self, dir_path):
+        dir_name = os.path.basename(dir_path.rstrip(os.sep))
         try:
-            data = self.build_zip_archive()
+            data = self.build_zip_archive(file_paths=[dir_path])
+            total_size = len(data)
             self.send_response(200)
             self.send_header("Content-type", "application/zip")
-            self.send_header("Content-Disposition", 'attachment; filename="qrtunnel-files.zip"')
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition", f'attachment; filename="{dir_name}.zip"')
+            self.send_header("Content-Length", str(total_size))
+            self._send_auth_cookie_if_needed()
             self.end_headers()
-            self.wfile.write(data)
-            print(f"{OK} ZIP archive served to {self.client_address[0]}")
-            log_transfer("qrtunnel-files.zip", len(data), self.client_address[0], "send")
+            sent = 0
+            chunk_size = 1048576  # 1 MB
+            last_update = 0
+            while sent < total_size:
+                chunk = data[sent : sent + chunk_size]
+                self.wfile.write(chunk)
+                sent += len(chunk)
+                last_update = self.print_progress(
+                    f"Download {dir_name}.zip", sent, total_size, last_update=last_update
+                )
+            self.print_progress(f"Download {dir_name}.zip", sent, total_size, force=True)
+            print()
+            print(f"{OK} Directory ZIP archive '{dir_name}.zip' served to {self.client_address[0]}")
+            log_transfer(f"{dir_name}.zip", total_size, self.client_address[0], "send")
         except BrokenPipeError:
-            print(f"{ERR} Client disconnected during ZIP transfer")
+            print(f"\n{ERR} Client disconnected during ZIP transfer of '{dir_name}'")
+        except Exception as e:
+            print(f"{ERR} Error serving directory ZIP '{dir_name}': {e}")
+            self.send_error(500, "Internal Server Error")
+
+    def serve_selected_zip(self):
+        try:
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            qs = parse_qs(parsed.query)
+            file_indices = qs.get("files", [""])[0].split(",")
+            selected_paths = []
+            for idx_s in file_indices:
+                idx_s = idx_s.strip()
+                if idx_s.isdigit():
+                    idx = int(idx_s)
+                    if 0 <= idx < len(self.file_paths):
+                        selected_paths.append(self.file_paths[idx])
+
+            if not selected_paths:
+                self.send_error(400, "No files selected")
+                return
+
+            self.serve_zip_archive(file_paths=selected_paths, zip_name="qrtunnel-selected.zip")
+        except Exception as e:
+            print(f"{ERR} Error serving selected ZIP archive: {e}")
+            self.send_error(500, "Internal Server Error")
+
+    def serve_zip_archive(self, file_paths=None, zip_name="qrtunnel-files.zip"):
+        try:
+            data = self.build_zip_archive(file_paths=file_paths)
+            total_size = len(data)
+            self.send_response(200)
+            self.send_header("Content-type", "application/zip")
+            self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+            self.send_header("Content-Length", str(total_size))
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
+            self._send_auth_cookie_if_needed()
+            self.end_headers()
+            sent = 0
+            chunk_size = 1048576  # 1 MB
+            last_update = 0
+            while sent < total_size:
+                chunk = data[sent : sent + chunk_size]
+                self.wfile.write(chunk)
+                sent += len(chunk)
+                last_update = self.print_progress(
+                    f"Download {zip_name}", sent, total_size, last_update=last_update
+                )
+            self.print_progress(f"Download {zip_name}", sent, total_size, force=True)
+            print()
+            print(f"{OK} ZIP archive served to {self.client_address[0]}")
+            log_transfer(zip_name, total_size, self.client_address[0], "send")
+        except BrokenPipeError:
+            print(f"\n{ERR} Client disconnected during ZIP transfer")
         except Exception as e:
             print(f"{ERR} Error serving ZIP archive: {e}")
             self.send_error(500, "Internal Server Error")
@@ -500,13 +1103,26 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
         if filename == "all.zip":
             self.serve_zip_archive()
             return
+        if filename == "selected.zip":
+            self.serve_selected_zip()
+            return
         target_path = None
-        for fp in self.file_paths:
-            if os.path.basename(fp) == filename:
-                target_path = fp
-                break
-        if not target_path or not os.path.isfile(target_path):
+        if "/" in filename:
+            parts = filename.split("/", 1)
+            if parts[0].isdigit():
+                idx = int(parts[0])
+                if 0 <= idx < len(self.file_paths):
+                    target_path = self.file_paths[idx]
+        if not target_path:
+            for fp in self.file_paths:
+                if os.path.basename(fp) == filename:
+                    target_path = fp
+                    break
+        if not target_path or not os.path.exists(target_path):
             self.send_error(404, "File Not Found")
+            return
+        if os.path.isdir(target_path):
+            self.serve_directory_zip(target_path)
             return
         try:
             file_size = os.path.getsize(target_path)
@@ -524,10 +1140,16 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                 end = file_size - 1
                 content_length = file_size
                 self.send_response(200)
-            self.send_header("Content-type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            mtype, _ = mimetypes.guess_type(target_path)
+            content_type = mtype if mtype else "application/octet-stream"
+            self.send_header("Content-type", content_type)
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{os.path.basename(target_path)}"'
+            )
             self.send_header("Content-Length", str(content_length))
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
+            self._send_auth_cookie_if_needed()
             self.end_headers()
             with open(target_path, "rb") as f:
                 if start > 0:
@@ -536,32 +1158,34 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                     try:
                         sent = 0
                         last_update = 0
+                        chunk_size = 262144  # 256 KB slice for smooth progress reporting
                         while sent < content_length:
+                            to_send = min(chunk_size, content_length - sent)
                             n = os.sendfile(
                                 self.connection.fileno(),
                                 f.fileno(),
                                 start + sent,
-                                content_length - sent,
+                                to_send,
                             )
                             if n == 0:
                                 break
                             sent += n
                             last_update = self.print_progress(
                                 f"Download {filename}",
-                                sent,
-                                content_length,
+                                start + sent,
+                                file_size,
                                 last_update=last_update,
                             )
                         self.print_progress(
-                            f"Download {filename}", sent, content_length, force=True
+                            f"Download {filename}", start + sent, file_size, force=True
                         )
                         print()
                     except BrokenPipeError:
-                        print(f"{ERR} Client disconnected during transfer of '{filename}'")
+                        print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
                 else:
                     try:
                         remaining = content_length
-                        chunk_size = 1024 * 1024
+                        chunk_size = 262144  # 256 KB
                         sent = 0
                         last_update = 0
                         while remaining > 0:
@@ -573,16 +1197,16 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                             sent += len(chunk)
                             last_update = self.print_progress(
                                 f"Download {filename}",
-                                sent,
-                                content_length,
+                                start + sent,
+                                file_size,
                                 last_update=last_update,
                             )
                         self.print_progress(
-                            f"Download {filename}", sent, content_length, force=True
+                            f"Download {filename}", start + sent, file_size, force=True
                         )
                         print()
                     except BrokenPipeError:
-                        print(f"{ERR} Client disconnected during transfer of '{filename}'")
+                        print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
             if not range_req or (range_req and end == file_size - 1):
                 print(f"{OK} File '{filename}' served to {self.client_address[0]}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")
