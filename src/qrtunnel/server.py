@@ -16,7 +16,7 @@ from socketserver import ThreadingMixIn
 from urllib.parse import unquote, urlparse
 
 from streaming_form_data import StreamingFormDataParser
-from streaming_form_data.targets import FileTarget
+from streaming_form_data.targets import BaseTarget
 
 from .config import Config
 from .constants import ERR, INFO, OK, WRN
@@ -31,6 +31,62 @@ from .utils import (
 )
 
 _stdout_lock = threading.Lock()
+
+
+class MultiFileTarget(BaseTarget):
+    """StreamingFormData target that handles multiple uploaded files."""
+
+    def __init__(self, upload_dir):
+        super().__init__()
+        self.upload_dir = Path(upload_dir)
+        self.files = []
+        self._current_fd = None
+        self._current_tmp = None
+        self._current_filename = None
+
+    def on_start(self):
+        self._current_filename = self.multipart_filename
+        if self._current_filename and self._current_filename.strip():
+            self._current_tmp = self.upload_dir / f"upload_{uuid.uuid4().hex}.tmp"
+            self._current_fd = open(self._current_tmp, "wb")
+        else:
+            self._current_tmp = None
+            self._current_fd = None
+
+    def on_data_received(self, chunk: bytes):
+        if self._current_fd:
+            self._current_fd.write(chunk)
+
+    def on_finish(self):
+        if self._current_fd:
+            self._current_fd.close()
+            self._current_fd = None
+            if self._current_filename and self._current_filename.strip():
+                self.files.append((self._current_filename, self._current_tmp))
+            elif self._current_tmp and self._current_tmp.exists():
+                try:
+                    self._current_tmp.unlink()
+                except Exception:
+                    pass
+
+    def cleanup(self):
+        if self._current_fd:
+            try:
+                self._current_fd.close()
+            except Exception:
+                pass
+            self._current_fd = None
+        for _, tmp_path in self.files:
+            if tmp_path.exists():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
+        if self._current_tmp and self._current_tmp.exists():
+            try:
+                self._current_tmp.unlink()
+            except Exception:
+                pass
 
 
 # ─────────────────────────────────────────────────────────
@@ -103,7 +159,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 print(f"{OK} Auth success from {self.client_address[0]}")
             else:
                 print(f"{WRN} Failed auth attempt from {self.client_address[0]}")
-                self.send_login_page(error="Incorrect password")
+                self.send_login_page(error="Incorrect 4-digit code")
         except Exception as e:
             print(f"{ERR} Auth error: {e}")
             self.send_error(500, "Internal Server Error")
@@ -144,18 +200,18 @@ button:active {{ transform:scale(0.99); }}
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
 </div>
 <h1>Security Check</h1>
-<p class="subtitle">Enter the 6-digit access code shown on the host computer.</p>
+<p class="subtitle">Enter the 4-digit access code shown on the host computer.</p>
 {error_html}
 <form action="/login" method="post">
 <input type="text" name="password" pattern="[0-9]*" inputmode="numeric"
-       placeholder="000000" maxlength="6" required autofocus autocomplete="off">
+       placeholder="0000" maxlength="4" required autofocus autocomplete="off">
 <button type="submit">Verify Code</button>
 </form>
 <p class="footer">qrtunnel</p>
 </div></body></html>"""
         self.send_response(200 if not error else 403)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", str(len(html)))
+        self.send_header("Content-Length", str(len(html.encode())))
         self.end_headers()
         self.wfile.write(html.encode())
 
@@ -266,7 +322,7 @@ button:active {{ transform:scale(0.99); }}
 
     # ── upload handler ──
     def handle_upload(self):
-        temp_path = None
+        target = None
         try:
             content_length_str = self.headers.get("Content-Length")
             if not content_length_str:
@@ -280,10 +336,8 @@ button:active {{ transform:scale(0.99); }}
 
             stream = LimitedStream(self.rfile, content_length)
             parser = StreamingFormDataParser(headers=self.headers)
-            temp_filename = f"upload_{uuid.uuid4().hex}.tmp"
-            temp_path = Path.cwd() / temp_filename
-            file_target = FileTarget(str(temp_path))
-            parser.register("file", file_target)
+            target = MultiFileTarget(Path.cwd())
+            parser.register("file", target)
             chunk_size = 65536
             received = 0
             last_update = 0
@@ -298,56 +352,86 @@ button:active {{ transform:scale(0.99); }}
                 )
             self.print_progress("Upload", received, content_length, force=True)
             print()
-            if not getattr(file_target, "multipart_filename", None):
-                if temp_path.exists():
-                    temp_path.unlink()
-                self.send_error(400, "File not found in form data")
-                return
-            sanitized_filename = os.path.basename(unquote(file_target.multipart_filename))
-            if not sanitized_filename:
-                if temp_path.exists():
-                    temp_path.unlink()
-                self.send_error(400, "Invalid filename")
+
+            if not target.files:
+                target.cleanup()
+                self.send_error(400, "No files found in form data")
                 return
 
-            # Avoid silent overwrite by deduplicating filename
-            base_stem = Path(sanitized_filename).stem
-            base_ext = Path(sanitized_filename).suffix
-            saved_filename = sanitized_filename
-            counter = 1
-            final_path = Path.cwd() / saved_filename
-            while final_path.exists():
-                saved_filename = f"{base_stem} ({counter}){base_ext}"
+            saved_files = []
+            for raw_filename, tmp_path in target.files:
+                sanitized_filename = os.path.basename(unquote(raw_filename))
+                if not sanitized_filename:
+                    sanitized_filename = "uploaded_file"
+
+                # Avoid silent overwrite by deduplicating filename
+                base_stem = Path(sanitized_filename).stem
+                base_ext = Path(sanitized_filename).suffix
+                saved_filename = sanitized_filename
+                counter = 1
                 final_path = Path.cwd() / saved_filename
-                counter += 1
+                while final_path.exists():
+                    saved_filename = f"{base_stem} ({counter}){base_ext}"
+                    final_path = Path.cwd() / saved_filename
+                    counter += 1
 
-            os.rename(temp_path, final_path)
-            print(f"{OK} File '{saved_filename}' received and saved to {final_path}")
-            print(f"{OK} SHA256: {sha256_file(final_path)}")
-            log_transfer(
-                saved_filename,
-                os.path.getsize(final_path),
-                self.client_address[0],
-                "receive",
-            )
+                os.rename(tmp_path, final_path)
+                file_size = os.path.getsize(final_path)
+                saved_files.append((saved_filename, file_size))
+                print(f"{OK} File '{saved_filename}' received and saved to {final_path}")
+                print(f"{OK} SHA256: {sha256_file(final_path)}")
+                log_transfer(
+                    saved_filename,
+                    file_size,
+                    self.client_address[0],
+                    "receive",
+                )
+
             self.send_response(200)
             self.send_header("Content-type", "text/html")
-            success_html = self.get_upload_success_page(saved_filename)
-            self.send_header("Content-Length", str(len(success_html)))
+            success_html = self.get_upload_success_page(saved_files)
+            self.send_header("Content-Length", str(len(success_html.encode())))
             self._send_auth_cookie_if_needed()
             self.end_headers()
             self.wfile.write(success_html.encode())
             self.close_connection = True
         except Exception as e:
-            if temp_path and temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except Exception:
-                    pass
+            if target:
+                target.cleanup()
             print(f"{ERR} Error during upload: {e}")
             self.send_error(500, "Internal Server Error")
 
-    def get_upload_success_page(self, filename):
+    def get_upload_success_page(self, files):
+        if isinstance(files, str):
+            file_items = [(files, None)]
+        elif isinstance(files, list):
+            file_items = [
+                (item[0], item[1]) if isinstance(item, (tuple, list)) else (str(item), None)
+                for item in files
+            ]
+        else:
+            file_items = [(str(files), None)]
+
+        total_files = len(file_items)
+        if total_files == 1:
+            fn, sz = file_items[0]
+            label = f"{fn} ({format_size(sz)})" if sz is not None else fn
+            subtitle = "The file was successfully received on the host computer."
+            content_html = f'<div class="file-badge">{label}</div>'
+            btn_label = "Upload Another File"
+        else:
+            subtitle = f"{total_files} files were successfully received on the host computer."
+            items_html = ""
+            for fn, sz in file_items:
+                sz_str = (
+                    f' <span style="color:#64748b;font-weight:400;">({format_size(sz)})</span>'
+                    if sz is not None
+                    else ""
+                )
+                items_html += f'<li style="padding:10px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:#0f172a;word-break:break-all;"><span style="text-align:left;">✓ {fn}</span>{sz_str}</li>'
+            content_html = f'<ul style="list-style:none;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;margin:16px 0 24px;max-height:220px;overflow-y:auto;text-align:left;">{items_html}</ul>'
+            btn_label = "Upload More Files"
+
         return f"""<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
@@ -360,7 +444,7 @@ body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica
        align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
 .container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:36px 24px;
              box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
-             max-width:400px; width:100%; text-align:center; }}
+             max-width:440px; width:100%; text-align:center; }}
 .success-icon {{ display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px;
                 border-radius:50%; background:#dcfce7; color:#16a34a; margin-bottom:16px; }}
 h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-spacing:-0.3px; }}
@@ -381,9 +465,9 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 </div>
 <h1>Upload Complete</h1>
-<p class="subtitle">The file was successfully received on the host computer.</p>
-<div class="file-badge">{filename}</div>
-<a href="/" class="button">Upload Another File</a>
+<p class="subtitle">{subtitle}</p>
+{content_html}
+<a href="/" class="button">{btn_label}</a>
 <p class="footer">qrtunnel</p>
 </div></body></html>"""
 
@@ -417,7 +501,13 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
              margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
 .drop-text { font-size:14px; font-weight:600; color:#0f172a; margin-bottom:2px; }
 .drop-hint { font-size:12px; color:#64748b; }
-#file-name-display { margin-top:8px; font-size:12px; font-weight:600; color:#2563eb; word-break:break-all; }
+.file-preview-area { margin-top:12px; text-align:left; }
+.file-summary { font-size:13px; font-weight:600; color:#2563eb; margin-bottom:8px; text-align:center; }
+.file-list-preview { list-style:none; border:1px solid #e2e8f0; border-radius:10px; max-height:160px; overflow-y:auto; background:#ffffff; }
+.file-list-preview li { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid #f1f5f9; font-size:12px; color:#0f172a; }
+.file-list-preview li:last-child { border-bottom:none; }
+.file-preview-name { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%; }
+.file-preview-size { color:#64748b; font-size:11px; white-space:nowrap; }
 .progress-container { display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
 .progress-bar-bg { background:#e2e8f0; border-radius:6px; height:8px; overflow:hidden; }
 .progress-bar-fill { background:#2563eb; height:100%; width:0%; transition:width 0.15s ease; border-radius:6px; }
@@ -435,18 +525,21 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 <div class="badge-icon">
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
 </div>
-<h1>Send File</h1>
-<p class="subtitle">Select a file to send to this computer</p>
+<h1>Send Files</h1>
+<p class="subtitle">Select files to send to this computer</p>
 </div>
 <form id="upload-form" class="upload-form" action="/upload" method="post" enctype="multipart/form-data">
 <div class="file-drop-area" id="drop-area">
-  <input type="file" id="file-input" name="file" required>
+  <input type="file" id="file-input" name="file" multiple required>
   <div class="drop-icon">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
   </div>
-  <p class="drop-text">Tap to select a file</p>
-  <p class="drop-hint">or drag and drop here</p>
-  <p id="file-name-display"></p>
+  <p class="drop-text" id="drop-text">Tap to select files</p>
+  <p class="drop-hint">or drag and drop multiple files here</p>
+</div>
+<div id="file-preview-area" class="file-preview-area" style="display:none;">
+  <div id="file-summary" class="file-summary"></div>
+  <ul id="file-list-preview" class="file-list-preview"></ul>
 </div>
 <div id="progress-container" class="progress-container">
   <div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
@@ -456,13 +549,16 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
     <span id="progress-stats">0 B / 0 B</span>
   </div>
 </div>
-<button type="submit" id="submit-btn" class="submit-button">Upload File</button>
+<button type="submit" id="submit-btn" class="submit-button">Upload Files</button>
 </form>
 <p class="footer">qrtunnel</p>
 </div>
 <script>
 const fileInput = document.getElementById('file-input');
-const fileNameDisplay = document.getElementById('file-name-display');
+const dropText = document.getElementById('drop-text');
+const filePreviewArea = document.getElementById('file-preview-area');
+const fileSummary = document.getElementById('file-summary');
+const fileListPreview = document.getElementById('file-list-preview');
 const submitButton = document.getElementById('submit-btn');
 const uploadForm = document.getElementById('upload-form');
 const progressContainer = document.getElementById('progress-container');
@@ -482,11 +578,36 @@ function formatBytes(bytes) {
 }
 
 fileInput.addEventListener('change', () => {
+    fileListPreview.innerHTML = '';
     if (fileInput.files.length > 0) {
-        fileNameDisplay.textContent = '✓ ' + fileInput.files[0].name + ' (' + formatBytes(fileInput.files[0].size) + ')';
+        var totalBytes = 0;
+        for (var i = 0; i < fileInput.files.length; i++) {
+            totalBytes += fileInput.files[i].size;
+            var li = document.createElement('li');
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'file-preview-name';
+            nameSpan.textContent = fileInput.files[i].name;
+            var sizeSpan = document.createElement('span');
+            sizeSpan.className = 'file-preview-size';
+            sizeSpan.textContent = formatBytes(fileInput.files[i].size);
+            li.appendChild(nameSpan);
+            li.appendChild(sizeSpan);
+            fileListPreview.appendChild(li);
+        }
+        if (fileInput.files.length === 1) {
+            fileSummary.textContent = '1 file selected (' + formatBytes(totalBytes) + ')';
+            submitButton.textContent = 'Upload File';
+        } else {
+            fileSummary.textContent = fileInput.files.length + ' files selected (' + formatBytes(totalBytes) + ')';
+            submitButton.textContent = 'Upload ' + fileInput.files.length + ' Files';
+        }
+        filePreviewArea.style.display = 'block';
+        dropText.textContent = fileInput.files.length === 1 ? 'Change selected file' : 'Change selected files';
         submitButton.classList.add('enabled');
     } else {
-        fileNameDisplay.textContent = '';
+        filePreviewArea.style.display = 'none';
+        dropText.textContent = 'Tap to select files';
+        submitButton.textContent = 'Upload Files';
         submitButton.classList.remove('enabled');
     }
 });
@@ -500,9 +621,10 @@ uploadForm.addEventListener('submit', (e) => {
     submitButton.textContent = 'Uploading...';
     progressContainer.style.display = 'block';
 
-    var file = fileInput.files[0];
     var formData = new FormData();
-    formData.append('file', file);
+    for (var i = 0; i < fileInput.files.length; i++) {
+        formData.append('file', fileInput.files[i]);
+    }
 
     var xhr = new XMLHttpRequest();
     var lastLoaded = 0;
@@ -540,7 +662,7 @@ uploadForm.addEventListener('submit', (e) => {
             submitButton.classList.add('enabled');
             submitButton.style.opacity = '1';
             submitButton.style.pointerEvents = 'auto';
-            submitButton.textContent = 'Upload File';
+            submitButton.textContent = 'Upload Files';
         }
     };
 
@@ -549,7 +671,7 @@ uploadForm.addEventListener('submit', (e) => {
         submitButton.classList.add('enabled');
         submitButton.style.opacity = '1';
         submitButton.style.pointerEvents = 'auto';
-        submitButton.textContent = 'Upload File';
+        submitButton.textContent = 'Upload Files';
     };
 
     xhr.open('POST', '/upload', true);
@@ -559,7 +681,7 @@ uploadForm.addEventListener('submit', (e) => {
 </body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", len(html.encode()))
+        self.send_header("Content-Length", str(len(html.encode())))
         self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
@@ -576,65 +698,76 @@ uploadForm.addEventListener('submit', (e) => {
                 f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
             )
             size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
-            file_list_html += f"""<li>
-  <a href="{href_path}" class="file-link">
-    <div class="file-info">
-      <svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-      <span class="file-name">{display_name}</span>
-    </div>
-    <div class="file-meta">
-      <span class="file-size">{size_label}</span>
+            file_list_html += f"""<li class="file-item">
+  <div class="file-cb-wrap">
+    <input type="checkbox" class="file-cb" id="cb-{idx}" data-idx="{idx}" data-name="{fn}">
+  </div>
+  <label for="cb-{idx}" class="file-info" title="Select {display_name}">
+    <svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+    <span class="file-name">{display_name}</span>
+  </label>
+  <div class="file-meta">
+    <span class="file-size">{size_label}</span>
+    <a href="{href_path}" class="dl-single-btn" download title="Download this file individually">
       <svg class="dl-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    </div>
-  </a>
+    </a>
+  </div>
 </li>"""
         zip_link_html = ""
         if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
-            zip_link_html = """<a href="/download/all.zip" class="zip-button">
+            zip_link_html = """<a href="/download/all.zip" class="zip-button" id="download-all-btn">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
   <span>Download All (.zip)</span>
 </a>"""
-        html = f"""<!DOCTYPE html>
+        template = """<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - File Download</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
-       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
-.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
+.container { background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
              box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
-             max-width:440px; width:100%; }}
-@media (max-width:480px) {{ .container {{ padding:24px 18px; border-radius:14px; }} }}
-.header {{ text-align:center; margin-bottom:24px; }}
-.badge-icon {{ display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
-              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }}
-h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }}
-.subtitle {{ font-size:14px; color:#64748b; font-weight:400; }}
-.file-section {{ margin-bottom:20px; }}
-.file-section-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }}
-.file-section-title {{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; }}
-.file-count-badge {{ font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }}
-.file-list {{ list-style:none; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#ffffff; }}
-.file-list li {{ border-bottom:1px solid #f1f5f9; }}
-.file-list li:last-child {{ border-bottom:none; }}
-.file-link {{ display:flex; justify-content:space-between; align-items:center; padding:13px 16px;
-             text-decoration:none; color:#0f172a; transition:background 0.15s; min-height:48px; gap:12px; }}
-.file-link:hover, .file-link:active {{ background:#f8fafc; }}
-.file-info {{ display:flex; align-items:center; gap:10px; overflow:hidden; min-width:0; }}
-.file-icon {{ color:#64748b; flex-shrink:0; }}
-.file-name {{ font-size:14px; font-weight:500; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.file-meta {{ display:flex; align-items:center; gap:8px; flex-shrink:0; }}
-.file-size {{ font-size:12px; color:#64748b; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:500; white-space:nowrap; }}
-.dl-arrow {{ color:#94a3b8; flex-shrink:0; }}
-.zip-button {{ display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+             max-width:440px; width:100%; }
+@media (max-width:480px) { .container { padding:24px 18px; border-radius:14px; } }
+.header { text-align:center; margin-bottom:24px; }
+.badge-icon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }
+h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }
+.subtitle { font-size:14px; color:#64748b; font-weight:400; }
+.file-section { margin-bottom:20px; }
+.file-section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.select-btn { background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s; }
+.select-btn:hover { background:#dbeafe; }
+.file-section-title { font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; }
+.file-count-badge { font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }
+.file-list { list-style:none; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#ffffff; }
+.file-list li { border-bottom:1px solid #f1f5f9; display:flex; align-items:center; padding:10px 14px; min-height:48px; gap:10px; }
+.file-list li:last-child { border-bottom:none; }
+.file-cb-wrap { display:flex; align-items:center; justify-content:center; }
+.file-cb { width:17px; height:17px; accent-color:#2563eb; cursor:pointer; }
+.file-info { display:flex; align-items:center; gap:8px; overflow:hidden; min-width:0; flex:1; cursor:pointer; user-select:none; }
+.file-icon { color:#64748b; flex-shrink:0; }
+.file-name { font-size:14px; font-weight:500; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.file-size { font-size:12px; color:#64748b; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:500; white-space:nowrap; }
+.dl-single-btn { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; color:#2563eb; text-decoration:none; transition:all 0.15s; }
+.dl-single-btn:hover { background:#2563eb; color:#ffffff; border-color:#2563eb; }
+.dl-arrow { flex-shrink:0; }
+.selected-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+                  background:#059669; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
+                  cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:14px; box-shadow:0 1px 2px rgba(5,150,105,0.2); }
+.selected-button:hover { background:#047857; }
+.selected-button:active { transform:scale(0.99); }
+.zip-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
               background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
-              text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:16px; box-shadow:0 1px 2px rgba(37,99,235,0.2); }}
-.zip-button:hover {{ background:#1d4ed8; }}
-.zip-button:active {{ transform:scale(0.99); }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
+              text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:12px; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
+.zip-button:hover { background:#1d4ed8; }
+.zip-button:active { transform:scale(0.99); }
+.footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
 <div class="header">
@@ -642,21 +775,74 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 </div>
 <h1>Download Files</h1>
-<p class="subtitle">Tap any file below to download</p>
+<p class="subtitle">Download files individually or bundled as a zip</p>
 </div>
 <div class="file-section">
 <div class="file-section-header">
-  <span class="file-section-title">Available Files</span>
-  <span class="file-count-badge">{len(self.file_paths)}</span>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button type="button" id="select-all-btn" class="select-btn">Select All</button>
+    <span class="file-section-title">Files</span>
+  </div>
+  <span class="file-count-badge">__FILE_COUNT__</span>
 </div>
-<ul class="file-list">{file_list_html}</ul>
-{zip_link_html}
+<ul class="file-list">__FILE_LIST__</ul>
+<button type="button" id="download-selected-btn" class="selected-button" style="display:none;">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+  <span id="selected-btn-text">Download Selected (.zip)</span>
+</button>
+__ZIP_LINK__
 </div>
 <p class="footer">qrtunnel</p>
-</div></body></html>"""
+</div>
+<script>
+const checkboxes = document.querySelectorAll('.file-cb');
+const selectAllBtn = document.getElementById('select-all-btn');
+const dlSelectedBtn = document.getElementById('download-selected-btn');
+const selectedBtnText = document.getElementById('selected-btn-text');
+
+function updateSelection() {
+    var checked = Array.from(checkboxes).filter(cb => cb.checked);
+    var count = checked.length;
+    if (count > 0) {
+        dlSelectedBtn.style.display = 'flex';
+        selectedBtnText.textContent = count === 1 ? 'Download Selected (1 file as .zip)' : 'Download Selected (' + count + ' files as .zip)';
+    } else {
+        dlSelectedBtn.style.display = 'none';
+    }
+    if (selectAllBtn) {
+        selectAllBtn.textContent = count === checkboxes.length ? 'Deselect All' : 'Select All';
+    }
+}
+
+checkboxes.forEach(cb => cb.addEventListener('change', updateSelection));
+
+if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+        var allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        checkboxes.forEach(cb => cb.checked = !allChecked);
+        updateSelection();
+    });
+}
+
+if (dlSelectedBtn) {
+    dlSelectedBtn.addEventListener('click', () => {
+        var checkedIndices = Array.from(checkboxes)
+            .filter(cb => cb.checked)
+            .map(cb => cb.getAttribute('data-idx'));
+        if (!checkedIndices.length) return;
+        window.location.href = '/download/selected.zip?files=' + checkedIndices.join(',');
+    });
+}
+</script>
+</body></html>"""
+        html = (
+            template.replace("__FILE_LIST__", file_list_html)
+            .replace("__ZIP_LINK__", zip_link_html)
+            .replace("__FILE_COUNT__", str(len(self.file_paths)))
+        )
         self.send_response(200)
         self.send_header("Content-type", "text/html")
-        self.send_header("Content-Length", len(html.encode()))
+        self.send_header("Content-Length", str(len(html.encode())))
         self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
@@ -722,13 +908,39 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-
             print(f"{ERR} Error serving directory ZIP '{dir_name}': {e}")
             self.send_error(500, "Internal Server Error")
 
-    def serve_zip_archive(self):
+    def serve_selected_zip(self):
         try:
-            data = self.build_zip_archive()
+            parsed = urlparse(self.path)
+            from urllib.parse import parse_qs
+
+            qs = parse_qs(parsed.query)
+            file_indices = qs.get("files", [""])[0].split(",")
+            selected_paths = []
+            for idx_s in file_indices:
+                idx_s = idx_s.strip()
+                if idx_s.isdigit():
+                    idx = int(idx_s)
+                    if 0 <= idx < len(self.file_paths):
+                        selected_paths.append(self.file_paths[idx])
+
+            if not selected_paths:
+                self.send_error(400, "No files selected")
+                return
+
+            self.serve_zip_archive(
+                file_paths=selected_paths, zip_name="qrtunnel-selected.zip"
+            )
+        except Exception as e:
+            print(f"{ERR} Error serving selected ZIP archive: {e}")
+            self.send_error(500, "Internal Server Error")
+
+    def serve_zip_archive(self, file_paths=None, zip_name="qrtunnel-files.zip"):
+        try:
+            data = self.build_zip_archive(file_paths=file_paths)
             total_size = len(data)
             self.send_response(200)
             self.send_header("Content-type", "application/zip")
-            self.send_header("Content-Disposition", 'attachment; filename="qrtunnel-files.zip"')
+            self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
             self.send_header("Content-Length", str(total_size))
             self._send_auth_cookie_if_needed()
             self.end_headers()
@@ -740,12 +952,12 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-
                 self.wfile.write(chunk)
                 sent += len(chunk)
                 last_update = self.print_progress(
-                    "Download all.zip", sent, total_size, last_update=last_update
+                    f"Download {zip_name}", sent, total_size, last_update=last_update
                 )
-            self.print_progress("Download all.zip", sent, total_size, force=True)
+            self.print_progress(f"Download {zip_name}", sent, total_size, force=True)
             print()
             print(f"{OK} ZIP archive served to {self.client_address[0]}")
-            log_transfer("qrtunnel-files.zip", total_size, self.client_address[0], "send")
+            log_transfer(zip_name, total_size, self.client_address[0], "send")
         except BrokenPipeError:
             print(f"\n{ERR} Client disconnected during ZIP transfer")
         except Exception as e:
@@ -755,6 +967,9 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-
     def serve_single_file(self, filename):
         if filename == "all.zip":
             self.serve_zip_archive()
+            return
+        if filename == "selected.zip":
+            self.serve_selected_zip()
             return
         target_path = None
         if "/" in filename:

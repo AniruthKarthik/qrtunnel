@@ -44,7 +44,7 @@ from .utils import format_size, get_lan_ip
 def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seconds=None):
     """Everything that happens after the user confirms in the TUI."""
     Config.LOCAL_PORT = port
-    Config.OTP = f"{random.randint(0, 999999):06d}"
+    Config.OTP = f"{random.randint(0, 9999):04d}"
 
     # map mode_name → flags
     lan_only = mode_name == "LAN"
