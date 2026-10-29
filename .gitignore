@@ -40,6 +40,7 @@ Thumbs.db
 .env.*
 
 # --- Temporary / Project-Specific Assets ---
+*.tmp
 files.zip
 DO_NOT_STAGE/
 publish.yml

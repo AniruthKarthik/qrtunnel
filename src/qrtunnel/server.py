@@ -756,6 +756,13 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
                   cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:14px; box-shadow:0 1px 2px rgba(5,150,105,0.2); }
 .selected-button:hover { background:#047857; }
 .selected-button:active { transform:scale(0.99); }
+.progress-container { display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-top:14px; text-align:left; }
+.progress-status { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.spinner { width:14px; height:14px; border:2px solid #cbd5e1; border-top-color:#2563eb; border-radius:50%; animation:spin 0.75s linear infinite; display:inline-block; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.progress-bar-bg { background:#e2e8f0; border-radius:6px; height:8px; overflow:hidden; }
+.progress-bar-fill { background:#2563eb; height:100%; width:0%; transition:width 0.15s ease; border-radius:6px; }
+.progress-info { display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#64748b; font-weight:500; }
 .footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
@@ -775,6 +782,18 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
   <span class="file-count-badge">__FILE_COUNT__</span>
 </div>
 <ul class="file-list">__FILE_LIST__</ul>
+<div id="progress-container" class="progress-container">
+  <div class="progress-status" id="progress-status">
+    <span class="spinner" id="progress-spinner"></span>
+    <span id="progress-status-text">Zipping selected files on host...</span>
+  </div>
+  <div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
+  <div class="progress-info">
+    <span id="progress-pct">0%</span>
+    <span id="progress-speed">0 B/s</span>
+    <span id="progress-stats">0 B / 0 B</span>
+  </div>
+</div>
 <button type="button" id="download-selected-btn" class="selected-button" style="display:none;">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
   <span id="selected-btn-text">Download Selected (.zip)</span>
@@ -787,6 +806,23 @@ const checkboxes = document.querySelectorAll('.file-cb');
 const selectAllBtn = document.getElementById('select-all-btn');
 const dlSelectedBtn = document.getElementById('download-selected-btn');
 const selectedBtnText = document.getElementById('selected-btn-text');
+const progressContainer = document.getElementById('progress-container');
+const progressStatusText = document.getElementById('progress-status-text');
+const progressSpinner = document.getElementById('progress-spinner');
+const progressBar = document.getElementById('progress-bar');
+const progressPct = document.getElementById('progress-pct');
+const progressSpeed = document.getElementById('progress-speed');
+const progressStats = document.getElementById('progress-stats');
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    var mb = kb / 1024;
+    if (mb < 1024) return mb.toFixed(1) + ' MB';
+    var gb = mb / 1024;
+    return gb.toFixed(1) + ' GB';
+}
 
 function updateSelection() {
     var checked = Array.from(checkboxes).filter(cb => cb.checked);
@@ -812,15 +848,135 @@ if (selectAllBtn) {
     });
 }
 
+function downloadWithProgress(url, defaultFilename, isZip) {
+    progressContainer.style.display = 'block';
+    progressSpinner.style.display = 'inline-block';
+    progressBar.style.width = '0%';
+    progressPct.textContent = '0%';
+    progressSpeed.textContent = '';
+    progressStats.textContent = isZip ? 'Zipping files on host...' : 'Connecting...';
+    progressStatusText.textContent = isZip ? 'Zipping selected files on host...' : 'Requesting ' + defaultFilename + '...';
+
+    if (dlSelectedBtn) {
+        dlSelectedBtn.style.opacity = '0.5';
+        dlSelectedBtn.style.pointerEvents = 'none';
+        selectedBtnText.textContent = isZip ? 'Zipping in progress...' : 'Downloading...';
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'blob';
+
+    var lastLoaded = 0;
+    var lastTime = Date.now();
+
+    xhr.onprogress = (ev) => {
+        progressSpinner.style.display = 'none';
+        progressStatusText.textContent = isZip ? 'Downloading ZIP archive...' : 'Downloading ' + defaultFilename + '...';
+
+        if (ev.lengthComputable && ev.total > 0) {
+            var now = Date.now();
+            var pct = ((ev.loaded / ev.total) * 100).toFixed(1);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressStats.textContent = formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total);
+
+            var elapsedSec = (now - lastTime) / 1000;
+            if (elapsedSec >= 0.3) {
+                var speed = (ev.loaded - lastLoaded) / elapsedSec;
+                progressSpeed.textContent = formatBytes(speed) + '/s';
+                lastLoaded = ev.loaded;
+                lastTime = now;
+            }
+        } else {
+            progressPct.textContent = '';
+            progressStats.textContent = formatBytes(ev.loaded) + ' downloaded';
+        }
+    };
+
+    xhr.onload = () => {
+        if (xhr.status === 200) {
+            progressBar.style.width = '100%';
+            progressPct.textContent = '100%';
+            progressSpinner.style.display = 'none';
+            progressStatusText.textContent = '✓ Download Complete!';
+
+            var filename = defaultFilename;
+            var disposition = xhr.getResponseHeader('Content-Disposition');
+            if (disposition && disposition.indexOf('filename=') !== -1) {
+                var match = disposition.match(/filename=["']?([^"';]+)["']?/);
+                if (match && match[1]) {
+                    filename = match[1];
+                }
+            }
+
+            var blob = xhr.response;
+            var downloadUrl = window.URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(downloadUrl);
+            }, 500);
+
+            setTimeout(() => {
+                if (dlSelectedBtn) {
+                    dlSelectedBtn.style.opacity = '1';
+                    dlSelectedBtn.style.pointerEvents = 'auto';
+                    updateSelection();
+                }
+            }, 1500);
+        } else {
+            progressSpinner.style.display = 'none';
+            progressStatusText.textContent = '⚠ Download failed (' + xhr.status + ')';
+            alert('Download failed: ' + xhr.statusText);
+            if (dlSelectedBtn) {
+                dlSelectedBtn.style.opacity = '1';
+                dlSelectedBtn.style.pointerEvents = 'auto';
+                updateSelection();
+            }
+        }
+    };
+
+    xhr.onerror = () => {
+        progressSpinner.style.display = 'none';
+        progressStatusText.textContent = '⚠ Network error';
+        alert('Network error occurred during download.');
+        if (dlSelectedBtn) {
+            dlSelectedBtn.style.opacity = '1';
+            dlSelectedBtn.style.pointerEvents = 'auto';
+            updateSelection();
+        }
+    };
+
+    xhr.send();
+}
+
 if (dlSelectedBtn) {
     dlSelectedBtn.addEventListener('click', () => {
         var checkedIndices = Array.from(checkboxes)
             .filter(cb => cb.checked)
             .map(cb => cb.getAttribute('data-idx'));
         if (!checkedIndices.length) return;
-        window.location.href = '/download/selected.zip?files=' + checkedIndices.join(',');
+        var url = '/download/selected.zip?files=' + checkedIndices.join(',');
+        downloadWithProgress(url, 'qrtunnel-selected.zip', true);
     });
 }
+
+document.querySelectorAll('.dl-single-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        var url = btn.getAttribute('href');
+        var row = btn.closest('.file-item');
+        var nameSpan = row ? row.querySelector('.file-name') : null;
+        var displayName = nameSpan ? nameSpan.textContent.trim() : 'file';
+        downloadWithProgress(url, displayName, false);
+    });
+});
 </script>
 </body></html>"""
         html = template.replace("__FILE_LIST__", file_list_html).replace(
@@ -928,6 +1084,9 @@ if (dlSelectedBtn) {
             self.send_header("Content-type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
             self.send_header("Content-Length", str(total_size))
+            self.send_header(
+                "Access-Control-Expose-Headers", "Content-Disposition, Content-Length"
+            )
             self._send_auth_cookie_if_needed()
             self.end_headers()
             sent = 0
@@ -997,6 +1156,9 @@ if (dlSelectedBtn) {
             self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(target_path)}"')
             self.send_header("Content-Length", str(content_length))
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header(
+                "Access-Control-Expose-Headers", "Content-Disposition, Content-Length"
+            )
             self._send_auth_cookie_if_needed()
             self.end_headers()
             with open(target_path, "rb") as f:

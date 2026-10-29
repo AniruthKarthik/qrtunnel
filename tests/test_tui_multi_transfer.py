@@ -63,6 +63,13 @@ def test_download_page_renders_individual_and_zip_options(tmp_path):
     # Selected zip download button is present
     assert 'id="download-selected-btn"' in html
 
+    # Progress container and zipping status
+    assert 'id="progress-container"' in html
+    assert 'id="progress-status-text"' in html
+    assert 'id="progress-spinner"' in html
+    assert 'id="progress-bar"' in html
+    assert "Zipping selected files on host" in html
+
     # Download all button was removed in favor of selective download
     assert 'id="download-all-btn"' not in html
     assert "/download/all.zip" not in html
