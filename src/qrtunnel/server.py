@@ -109,34 +109,49 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.send_error(500, "Internal Server Error")
 
     def send_login_page(self, error=None):
-        error_html = f'<p class="error">{error}</p>' if error else ""
+        error_html = f'<div class="error">{error}</div>' if error else ""
         html = f"""<!DOCTYPE html>
-<html><head>
+<html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - Security Check</title>
 <style>
-body {{ font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee;
-       display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
-.box {{ background: #16213e; padding: 40px; border-radius: 8px; text-align: center;
-        width: 100%; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }}
-input {{ width: 100%; padding: 12px; margin: 20px 0; background: #0f0f1a; border: 1px solid #2a3a5e;
-         color: white; border-radius: 4px; font-size: 18px; text-align: center; letter-spacing: 2px; }}
-button {{ width: 100%; padding: 12px; background: #4361ee; color: white; border: none;
-          border-radius: 4px; font-size: 16px; cursor: pointer; }}
-button:hover {{ background: #3a56d4; }}
-.error {{ color: #ff4757; margin-bottom: 10px; }}
-h2 {{ margin-top: 0; }}
+* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
+.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:380px; width:100%; text-align:center; }}
+.badge-icon {{ display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:14px; }}
+h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-spacing:-0.3px; }}
+.subtitle {{ font-size:14px; color:#64748b; margin-bottom:20px; line-height:1.4; }}
+.error {{ color:#dc2626; font-size:13px; font-weight:500; margin-bottom:14px; background:#fef2f2;
+         border:1px solid #fecaca; border-radius:8px; padding:8px 12px; }}
+input {{ width:100%; padding:14px; margin-bottom:16px; background:#f8fafc; border:1.5px solid #cbd5e1;
+        color:#0f172a; border-radius:10px; font-size:26px; font-weight:700; text-align:center;
+        letter-spacing:6px; font-family:monospace; outline:none; transition:border-color 0.15s, box-shadow 0.15s; }}
+input:focus {{ border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.12); }}
+button {{ width:100%; padding:14px 20px; background:#2563eb; color:#fff; border:none; border-radius:10px;
+         font-size:15px; font-weight:600; cursor:pointer; transition:background 0.15s, transform 0.1s; }}
+button:hover {{ background:#1d4ed8; }}
+button:active {{ transform:scale(0.99); }}
+.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
 </style></head><body>
-<div class="box">
-<h2>🔒 Restricted Access</h2>
-<p>Please enter the 6-digit code shown on the host screen.</p>
+<div class="container">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+</div>
+<h1>Security Check</h1>
+<p class="subtitle">Enter the 6-digit access code shown on the host computer.</p>
 {error_html}
 <form action="/login" method="post">
 <input type="text" name="password" pattern="[0-9]*" inputmode="numeric"
        placeholder="000000" maxlength="6" required autofocus autocomplete="off">
-<button type="submit">Verify</button>
+<button type="submit">Verify Code</button>
 </form>
+<p class="footer">qrtunnel</p>
 </div></body></html>"""
         self.send_response(200 if not error else 403)
         self.send_header("Content-type", "text/html")
@@ -177,10 +192,7 @@ h2 {{ margin-top: 0; }}
         real_ip = self.get_real_client_ip()
 
         if self.is_tunnel_request():
-            if self.is_request_from_same_lan():
-                conn_type = f"{OK} Smart LAN (via Tunnel)"
-            else:
-                conn_type = f"{INFO} Tunnel"
+            conn_type = f"{INFO} Tunnel"
             display_ip = real_ip
         else:
             is_local = client_ip in ("127.0.0.1", "::1")
@@ -210,17 +222,6 @@ h2 {{ margin-top: 0; }}
             self.send_upload_page()
         else:
             if parsed_path.path.startswith("/download/"):
-                if self.is_tunnel_request() and self.is_request_from_same_lan():
-                    lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
-                    if lan_ip and lan_ip not in ("None", "127.0.0.1"):
-                        token = str(uuid.uuid4())
-                        self.authorized_sessions.add(token)
-                        delim = "&" if "?" in self.path else "?"
-                        lan_url = f"http://{lan_ip}:{Config.LOCAL_PORT}{self.path}{delim}auth={token}"
-                        self.send_response(302)
-                        self.send_header("Location", lan_url)
-                        self.end_headers()
-                        return
                 self.serve_single_file(unquote(parsed_path.path[len("/download/") :]))
             elif parsed_path.path in ("/", "/index.html"):
                 self.send_download_page()
@@ -262,65 +263,6 @@ h2 {{ margin-top: 0; }}
                 )
         except Exception:
             pass
-
-    # ── smart redirect JS ──
-    def get_smart_redirect_js(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
-        if not lan_ip or lan_ip in ("None", "127.0.0.1"):
-            return ""
-
-        # Pre-authenticate handover session token if auth is enabled
-        token = str(uuid.uuid4())
-        self.authorized_sessions.add(token)
-        lan_target = f"http://{lan_ip}:{Config.LOCAL_PORT}{self.path}"
-        delim = "&" if "?" in lan_target else "?"
-        lan_url = f"{lan_target}{delim}auth={token}"
-
-        is_same_net = self.is_request_from_same_lan()
-        if is_same_net:
-            # Client verified on same Wi-Fi / local network: unhide switch link and auto-redirect
-            return f"""
-    <script>
-        (function() {{
-            var lanIp = "{lan_ip}";
-            var lanUrl = "{lan_url}";
-            if (window.location.hostname !== lanIp) {{
-                var discoveryDiv = document.getElementById('lan-discovery');
-                var lanBtn = document.getElementById('lan-btn');
-                if (discoveryDiv && lanBtn) {{
-                    discoveryDiv.style.display = 'block';
-                    lanBtn.href = lanUrl;
-                }}
-                setTimeout(function() {{
-                    window.location.href = lanUrl;
-                }}, 250);
-            }}
-        }})();
-    </script>"""
-
-        return f"""
-    <script>
-        (function() {{
-            var lanIp = "{lan_ip}";
-            var lanPort = {Config.LOCAL_PORT};
-            var lanUrl = "{lan_url}";
-            if (window.location.hostname !== lanIp) {{
-                var discoveryDiv = document.getElementById('lan-discovery');
-                var lanBtn = document.getElementById('lan-btn');
-                var img = new Image();
-                img.onload = function() {{
-                    if (discoveryDiv && lanBtn) {{
-                        discoveryDiv.style.display = 'block';
-                        lanBtn.href = lanUrl;
-                    }}
-                    setTimeout(function() {{
-                        window.location.href = lanUrl;
-                    }}, 100);
-                }};
-                img.src = "http://" + lanIp + ":" + lanPort + "/ping?t=" + Date.now();
-            }}
-        }})();
-    </script>"""
 
     # ── upload handler ──
     def handle_upload(self):
@@ -407,93 +349,120 @@ h2 {{ margin-top: 0; }}
 
     def get_upload_success_page(self, filename):
         return f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>qrtunnel - Upload Success</title>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>qrtunnel - Upload Complete</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.success-message {{ text-align:center; margin-bottom:20px; color:#4CAF50; font-size:1.2em; }}
-.link-button {{ display:block; width:100%; padding:16px 24px; background:#4361ee; color:#fff;
-                border:none; border-radius:6px; font-size:15px; font-weight:500; cursor:pointer;
-                text-decoration:none; text-align:center; transition:background 0.2s; margin-top:20px; }}
-.link-button:hover {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
+.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:36px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:400px; width:100%; text-align:center; }}
+.success-icon {{ display:inline-flex; align-items:center; justify-content:center; width:56px; height:56px;
+                border-radius:50%; background:#dcfce7; color:#16a34a; margin-bottom:16px; }}
+h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-spacing:-0.3px; }}
+.subtitle {{ font-size:14px; color:#64748b; line-height:1.4; }}
+.file-badge {{ display:inline-block; font-size:13px; font-weight:600; color:#0f172a; background:#f1f5f9;
+              border:1px solid #e2e8f0; padding:8px 14px; border-radius:10px; margin:16px 0 24px;
+              word-break:break-all; max-width:100%; }}
+.button {{ display:flex; align-items:center; justify-content:center; width:100%; padding:14px 20px;
+          background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px;
+          font-weight:600; text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s;
+          box-shadow:0 1px 2px rgba(37,99,235,0.2); }}
+.button:hover {{ background:#1d4ed8; }}
+.button:active {{ transform:scale(0.99); }}
+.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Upload Status</h1></div>
-<div class="success-message"><p>File '<strong>{filename}</strong>' uploaded successfully!</p></div>
-<a href="/" class="link-button">Upload Another File</a>
+<div class="success-icon">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+</div>
+<h1>Upload Complete</h1>
+<p class="subtitle">The file was successfully received on the host computer.</p>
+<div class="file-badge">{filename}</div>
+<a href="/" class="button">Upload Another File</a>
 <p class="footer">qrtunnel</p>
 </div></body></html>"""
 
     def send_upload_page(self):
-        html = f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+        html = """<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - File Upload</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.subtitle {{ font-size:14px; color:#888; }}
-.upload-form {{ display:flex; flex-direction:column; gap:20px; }}
-.file-input-wrapper {{ position:relative; width:100%; padding:16px 24px; background:#0f0f1a;
-                       border:1px dashed #4361ee; border-radius:6px; text-align:center;
-                       cursor:pointer; transition:background 0.2s, border-color 0.2s; }}
-.file-input-wrapper:hover {{ background:#1f1f2a; border-color:#5a78ff; }}
-#file-input {{ opacity:0; position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; }}
-.file-input-label {{ font-size:14px; font-weight:500; color:#ccc; }}
-#file-name {{ margin-top:12px; font-size:12px; font-family:'SF Mono','Consolas',monospace; color:#888; }}
-.progress-container {{ display:none; margin-top:6px; }}
-.progress-bar-bg {{ background:#0f0f1a; border-radius:6px; height:12px; overflow:hidden; border:1px solid #2a3a5e; }}
-.progress-bar-fill {{ background:linear-gradient(90deg, #4361ee, #4cc9f0); height:100%; width:0%; transition:width 0.15s ease; }}
-.progress-info {{ display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:#aaa; font-family:'SF Mono','Consolas',monospace; }}
-.submit-button {{ display:block; width:100%; padding:16px 24px; background:#4361ee; color:#fff;
-                  border:none; border-radius:6px; font-size:15px; font-weight:500; cursor:pointer;
-                  text-align:center; transition:background 0.2s; opacity:0.5; pointer-events:none; }}
-.submit-button.enabled {{ opacity:1; pointer-events:auto; }}
-.submit-button:hover.enabled {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
+.container { background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:440px; width:100%; }
+@media (max-width:480px) { .container { padding:24px 18px; border-radius:14px; } }
+.header { text-align:center; margin-bottom:24px; }
+.badge-icon { display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }
+h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }
+.subtitle { font-size:14px; color:#64748b; font-weight:400; }
+.upload-form { display:flex; flex-direction:column; gap:16px; }
+.file-drop-area { position:relative; border:2px dashed #cbd5e1; border-radius:14px; padding:32px 16px;
+                  text-align:center; background:#f8fafc; cursor:pointer; transition:all 0.15s ease; }
+.file-drop-area:hover, .file-drop-area.dragover { border-color:#2563eb; background:#eff6ff; }
+#file-input { position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+.drop-icon { display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
+             border-radius:10px; background:#fff; border:1px solid #e2e8f0; color:#2563eb;
+             margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+.drop-text { font-size:14px; font-weight:600; color:#0f172a; margin-bottom:2px; }
+.drop-hint { font-size:12px; color:#64748b; }
+#file-name-display { margin-top:8px; font-size:12px; font-weight:600; color:#2563eb; word-break:break-all; }
+.progress-container { display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; }
+.progress-bar-bg { background:#e2e8f0; border-radius:6px; height:8px; overflow:hidden; }
+.progress-bar-fill { background:#2563eb; height:100%; width:0%; transition:width 0.15s ease; border-radius:6px; }
+.progress-info { display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:#64748b; font-weight:500; }
+.submit-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+                 background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
+                 cursor:pointer; transition:all 0.15s; opacity:0.4; pointer-events:none; }
+.submit-button.enabled { opacity:1; pointer-events:auto; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
+.submit-button.enabled:hover { background:#1d4ed8; }
+.submit-button.enabled:active { transform:scale(0.99); }
+.footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Upload File</h1><p class="subtitle">Select a file to send to this computer</p></div>
+<div class="header">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+</div>
+<h1>Send File</h1>
+<p class="subtitle">Select a file to send to this computer</p>
+</div>
 <form id="upload-form" class="upload-form" action="/upload" method="post" enctype="multipart/form-data">
-<div class="file-input-wrapper">
-<label for="file-input" class="file-input-label">Click to select a file</label>
-<input type="file" id="file-input" name="file" required>
-<p id="file-name"></p>
+<div class="file-drop-area" id="drop-area">
+  <input type="file" id="file-input" name="file" required>
+  <div class="drop-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+  </div>
+  <p class="drop-text">Tap to select a file</p>
+  <p class="drop-hint">or drag and drop here</p>
+  <p id="file-name-display"></p>
 </div>
 <div id="progress-container" class="progress-container">
-<div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
-<div class="progress-info">
-<span id="progress-pct">0%</span>
-<span id="progress-speed">0 B/s</span>
-<span id="progress-stats">0 B / 0 B</span>
+  <div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
+  <div class="progress-info">
+    <span id="progress-pct">0%</span>
+    <span id="progress-speed">0 B/s</span>
+    <span id="progress-stats">0 B / 0 B</span>
+  </div>
 </div>
-</div>
-<button type="submit" id="submit-btn" class="submit-button">Upload</button>
+<button type="submit" id="submit-btn" class="submit-button">Upload File</button>
 </form>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
-</div>
 <p class="footer">qrtunnel</p>
 </div>
 <script>
 const fileInput = document.getElementById('file-input');
-const fileNameDisplay = document.getElementById('file-name');
+const fileNameDisplay = document.getElementById('file-name-display');
 const submitButton = document.getElementById('submit-btn');
 const uploadForm = document.getElementById('upload-form');
 const progressContainer = document.getElementById('progress-container');
@@ -502,7 +471,7 @@ const progressPct = document.getElementById('progress-pct');
 const progressSpeed = document.getElementById('progress-speed');
 const progressStats = document.getElementById('progress-stats');
 
-function formatBytes(bytes) {{
+function formatBytes(bytes) {
     if (bytes < 1024) return bytes + ' B';
     var kb = bytes / 1024;
     if (kb < 1024) return kb.toFixed(1) + ' KB';
@@ -510,23 +479,23 @@ function formatBytes(bytes) {{
     if (mb < 1024) return mb.toFixed(1) + ' MB';
     var gb = mb / 1024;
     return gb.toFixed(1) + ' GB';
-}}
+}
 
-fileInput.addEventListener('change', () => {{
-    if (fileInput.files.length > 0) {{
-        fileNameDisplay.textContent = 'Selected: ' + fileInput.files[0].name + ' (' + formatBytes(fileInput.files[0].size) + ')';
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+        fileNameDisplay.textContent = '✓ ' + fileInput.files[0].name + ' (' + formatBytes(fileInput.files[0].size) + ')';
         submitButton.classList.add('enabled');
-    }} else {{
+    } else {
         fileNameDisplay.textContent = '';
         submitButton.classList.remove('enabled');
-    }}
-}});
+    }
+});
 
-uploadForm.addEventListener('submit', (e) => {{
+uploadForm.addEventListener('submit', (e) => {
     if (!fileInput.files.length) return;
     e.preventDefault();
     submitButton.classList.remove('enabled');
-    submitButton.style.opacity = '0.5';
+    submitButton.style.opacity = '0.4';
     submitButton.style.pointerEvents = 'none';
     submitButton.textContent = 'Uploading...';
     progressContainer.style.display = 'block';
@@ -539,8 +508,8 @@ uploadForm.addEventListener('submit', (e) => {{
     var lastLoaded = 0;
     var lastTime = Date.now();
 
-    xhr.upload.onprogress = (ev) => {{
-        if (ev.lengthComputable) {{
+    xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
             var now = Date.now();
             var pct = ((ev.loaded / ev.total) * 100).toFixed(1);
             progressBar.style.width = pct + '%';
@@ -548,46 +517,45 @@ uploadForm.addEventListener('submit', (e) => {{
             progressStats.textContent = formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total);
 
             var elapsedSec = (now - lastTime) / 1000;
-            if (elapsedSec >= 0.4) {{
+            if (elapsedSec >= 0.4) {
                 var speed = (ev.loaded - lastLoaded) / elapsedSec;
                 progressSpeed.textContent = formatBytes(speed) + '/s';
                 lastLoaded = ev.loaded;
                 lastTime = now;
-            }}
+            }
 
-            if (ev.loaded >= ev.total) {{
+            if (ev.loaded >= ev.total) {
                 submitButton.textContent = 'Processing on server...';
-            }}
-        }}
-    }};
+            }
+        }
+    };
 
-    xhr.onload = () => {{
-        if (xhr.status === 200) {{
+    xhr.onload = () => {
+        if (xhr.status === 200) {
             document.open();
             document.write(xhr.responseText);
             document.close();
-        }} else {{
+        } else {
             alert('Upload failed: ' + xhr.statusText);
             submitButton.classList.add('enabled');
             submitButton.style.opacity = '1';
             submitButton.style.pointerEvents = 'auto';
-            submitButton.textContent = 'Upload';
-        }}
-    }};
+            submitButton.textContent = 'Upload File';
+        }
+    };
 
-    xhr.onerror = () => {{
+    xhr.onerror = () => {
         alert('Network error occurred during upload.');
         submitButton.classList.add('enabled');
         submitButton.style.opacity = '1';
         submitButton.style.pointerEvents = 'auto';
-        submitButton.textContent = 'Upload';
-    }};
+        submitButton.textContent = 'Upload File';
+    };
 
     xhr.open('POST', '/upload', true);
     xhr.send(formData);
-}});
+});
 </script>
-{self.get_smart_redirect_js()}
 </body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -608,57 +576,84 @@ uploadForm.addEventListener('submit', (e) => {{
                 f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
             )
             size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
-            file_list_html += (
-                f'<li><a href="{href_path}" class="file-link">'
-                f'<span>{display_name}</span><span class="file-size">{size_label}</span></a></li>'
-            )
+            file_list_html += f"""<li>
+  <a href="{href_path}" class="file-link">
+    <div class="file-info">
+      <svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      <span class="file-name">{display_name}</span>
+    </div>
+    <div class="file-meta">
+      <span class="file-size">{size_label}</span>
+      <svg class="dl-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    </div>
+  </a>
+</li>"""
         zip_link_html = ""
         if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
-            zip_link_html = '<a href="/download/all.zip" class="zip-link">Download all as ZIP</a>'
+            zip_link_html = """<a href="/download/all.zip" class="zip-button">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+  <span>Download All (.zip)</span>
+</a>"""
         html = f"""<!DOCTYPE html>
-<html><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - File Download</title>
 <style>
-* {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
-        background:#1a1a2e; min-height:100vh; display:flex; align-items:center;
-        justify-content:center; padding:20px; color:#eee; }}
-.container {{ background:#16213e; border-radius:8px; padding:40px;
-              box-shadow:0 4px 20px rgba(0,0,0,0.4); max-width:480px; width:100%; }}
-.header {{ text-align:center; margin-bottom:32px; padding-bottom:24px; border-bottom:1px solid #2a3a5e; }}
-h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
-.subtitle {{ font-size:14px; color:#888; }}
-.file-section {{ margin-bottom:32px; }}
-.file-section-title {{ font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#666; margin-bottom:12px; }}
-.file-list {{ list-style:none; background:#0f0f1a; border-radius:6px; border:1px solid #2a3a5e; }}
-.file-list li {{ border-bottom:1px solid #2a3a5e; }}
+* {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
+       align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
+.container {{ background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:32px 24px;
+             box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
+             max-width:440px; width:100%; }}
+@media (max-width:480px) {{ .container {{ padding:24px 18px; border-radius:14px; }} }}
+.header {{ text-align:center; margin-bottom:24px; }}
+.badge-icon {{ display:inline-flex; align-items:center; justify-content:center; width:48px; height:48px;
+              border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:12px; }}
+h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }}
+.subtitle {{ font-size:14px; color:#64748b; font-weight:400; }}
+.file-section {{ margin-bottom:20px; }}
+.file-section-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }}
+.file-section-title {{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; }}
+.file-count-badge {{ font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }}
+.file-list {{ list-style:none; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; background:#ffffff; }}
+.file-list li {{ border-bottom:1px solid #f1f5f9; }}
 .file-list li:last-child {{ border-bottom:none; }}
-.file-link {{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; font-size:14px;
-              font-family:'SF Mono','Consolas',monospace; color:#ccc;
-              text-decoration:none; transition:background-color 0.2s; }}
-.file-link:hover {{ background-color:#2a3a5e; }}
-.file-size {{ font-size:12px; color:#888; margin-left:12px; }}
-.zip-link {{ display:block; margin-top:16px; padding:12px 16px; background:#4361ee; color:#fff;
-             border-radius:6px; text-decoration:none; text-align:center; font-size:14px; }}
-.zip-link:hover {{ background:#3a56d4; }}
-.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#555; }}
+.file-link {{ display:flex; justify-content:space-between; align-items:center; padding:13px 16px;
+             text-decoration:none; color:#0f172a; transition:background 0.15s; min-height:48px; gap:12px; }}
+.file-link:hover, .file-link:active {{ background:#f8fafc; }}
+.file-info {{ display:flex; align-items:center; gap:10px; overflow:hidden; min-width:0; }}
+.file-icon {{ color:#64748b; flex-shrink:0; }}
+.file-name {{ font-size:14px; font-weight:500; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.file-meta {{ display:flex; align-items:center; gap:8px; flex-shrink:0; }}
+.file-size {{ font-size:12px; color:#64748b; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:500; white-space:nowrap; }}
+.dl-arrow {{ color:#94a3b8; flex-shrink:0; }}
+.zip-button {{ display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
+              background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
+              text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:16px; box-shadow:0 1px 2px rgba(37,99,235,0.2); }}
+.zip-button:hover {{ background:#1d4ed8; }}
+.zip-button:active {{ transform:scale(0.99); }}
+.footer {{ text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }}
 </style></head><body>
 <div class="container">
-<div class="header"><h1>Files Ready</h1><p class="subtitle">Click a file to download</p></div>
+<div class="header">
+<div class="badge-icon">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+</div>
+<h1>Download Files</h1>
+<p class="subtitle">Tap any file below to download</p>
+</div>
 <div class="file-section">
-<p class="file-section-title">Files ({len(self.file_paths)})</p>
+<div class="file-section-header">
+  <span class="file-section-title">Available Files</span>
+  <span class="file-count-badge">{len(self.file_paths)}</span>
+</div>
 <ul class="file-list">{file_list_html}</ul>
 {zip_link_html}
 </div>
-<div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
-<p style="font-size:13px;color:#4CAF50;margin-bottom:10px;">Same Wi-Fi detected!</p>
-<a id="lan-btn" href="#" style="font-size:14px;color:#4361ee;text-decoration:none;border:1px solid #4361ee;padding:8px 16px;border-radius:4px;">Switch to High Speed</a>
-</div>
 <p class="footer">qrtunnel</p>
-</div>
-{self.get_smart_redirect_js()}
-</body></html>"""
+</div></body></html>"""
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.send_header("Content-Length", len(html.encode()))

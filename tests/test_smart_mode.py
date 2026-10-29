@@ -73,17 +73,19 @@ def test_is_same_network_ipv6(monkeypatch):
     assert is_same_network("2606:4700:4700::1111", "192.168.1.5") is False
 
 
-def test_smart_redirect_js_on_same_network(monkeypatch):
-    qrtunnel.utils._CACHED_PUBLIC_IP = "203.0.113.195"
-
+def test_is_tunnel_request():
     handler = FileTransferHandler.__new__(FileTransferHandler)
-    handler.server_lan_ip = "192.168.1.55"
-    handler.client_address = ("127.0.0.1", 54321)  # tunnel proxy on localhost
     handler.headers = {"CF-Connecting-IP": "203.0.113.195"}
-    handler.path = "/"
-    FileTransferHandler.authorized_sessions = set()
+    assert handler.is_tunnel_request() is True
 
-    js = handler.get_smart_redirect_js()
-    assert "window.location.href = lanUrl" in js
-    assert "192.168.1.55" in js
+    handler.headers = {}
+    assert handler.is_tunnel_request() is False
+
+
+def test_get_upload_success_page_light_theme():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    html = handler.get_upload_success_page("document.pdf")
+    assert "document.pdf" in html
+    assert "#f8fafc" in html  # Light theme background
+    assert "Upload Complete" in html
 

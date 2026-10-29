@@ -409,10 +409,7 @@ class TunnelManager:
                 return False
 
         print("\n" + "=" * 60)
-        if self.lan_ip:
-            print("SMART MODE ENABLED (LAN + Tunnel)")
-        else:
-            print("ESTABLISHING PUBLIC TUNNEL")
+        print("ESTABLISHING PUBLIC TUNNEL")
         print("=" * 60)
 
         success = False
@@ -423,7 +420,7 @@ class TunnelManager:
         elif self.noauth:
             success = self._try_tunnel(SSHTunnel(self.local_port))
             if not success and self.tunnel_backend is None:
-                # In Smart Mode, try Cloudflare if installed
+                # Fallback: try Cloudflare if installed
                 success = self._try_tunnel(CloudflareTunnel(self.local_port))
 
         if not success and self.tunnel_backend != "cloudflare":
