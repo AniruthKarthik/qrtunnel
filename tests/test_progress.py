@@ -13,4 +13,3 @@ def test_format_progress_boundary_exceeded():
     # Should cap ratio at 1.0 (100.0%)
     res = format_progress(150, 100, width=10)
     assert "[##########] 100.0%" in res
-

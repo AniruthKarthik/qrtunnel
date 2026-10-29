@@ -314,9 +314,7 @@ button:active {{ transform:scale(0.99); }}
 
             token = parse_qs(parsed.query).get("auth", [None])[0]
             if token and token in self.authorized_sessions:
-                self.send_header(
-                    "Set-Cookie", f"session={token}; Path=/; HttpOnly; Max-Age=86400"
-                )
+                self.send_header("Set-Cookie", f"session={token}; Path=/; HttpOnly; Max-Age=86400")
         except Exception:
             pass
 
@@ -694,9 +692,7 @@ uploadForm.addEventListener('submit', (e) => {
         for idx, fp in enumerate(self.file_paths):
             fn = os.path.basename(fp)
             href_path = f"/download/{idx}/{fn}" if has_duplicates else f"/download/{fn}"
-            display_name = (
-                f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
-            )
+            display_name = f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
             size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
             file_list_html += f"""<li class="file-item">
   <div class="file-cb-wrap">
@@ -1024,9 +1020,7 @@ document.querySelectorAll('.dl-single-btn').forEach(btn => {
             total_size = len(data)
             self.send_response(200)
             self.send_header("Content-type", "application/zip")
-            self.send_header(
-                "Content-Disposition", f'attachment; filename="{dir_name}.zip"'
-            )
+            self.send_header("Content-Disposition", f'attachment; filename="{dir_name}.zip"')
             self.send_header("Content-Length", str(total_size))
             self._send_auth_cookie_if_needed()
             self.end_headers()
@@ -1069,9 +1063,7 @@ document.querySelectorAll('.dl-single-btn').forEach(btn => {
                 self.send_error(400, "No files selected")
                 return
 
-            self.serve_zip_archive(
-                file_paths=selected_paths, zip_name="qrtunnel-selected.zip"
-            )
+            self.serve_zip_archive(file_paths=selected_paths, zip_name="qrtunnel-selected.zip")
         except Exception as e:
             print(f"{ERR} Error serving selected ZIP archive: {e}")
             self.send_error(500, "Internal Server Error")
@@ -1084,9 +1076,7 @@ document.querySelectorAll('.dl-single-btn').forEach(btn => {
             self.send_header("Content-type", "application/zip")
             self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
             self.send_header("Content-Length", str(total_size))
-            self.send_header(
-                "Access-Control-Expose-Headers", "Content-Disposition, Content-Length"
-            )
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
             self._send_auth_cookie_if_needed()
             self.end_headers()
             sent = 0
@@ -1153,12 +1143,12 @@ document.querySelectorAll('.dl-single-btn').forEach(btn => {
             mtype, _ = mimetypes.guess_type(target_path)
             content_type = mtype if mtype else "application/octet-stream"
             self.send_header("Content-type", content_type)
-            self.send_header("Content-Disposition", f'attachment; filename="{os.path.basename(target_path)}"')
+            self.send_header(
+                "Content-Disposition", f'attachment; filename="{os.path.basename(target_path)}"'
+            )
             self.send_header("Content-Length", str(content_length))
             self.send_header("Accept-Ranges", "bytes")
-            self.send_header(
-                "Access-Control-Expose-Headers", "Content-Disposition, Content-Length"
-            )
+            self.send_header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length")
             self._send_auth_cookie_if_needed()
             self.end_headers()
             with open(target_path, "rb") as f:

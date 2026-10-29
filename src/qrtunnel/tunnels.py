@@ -210,6 +210,7 @@ class SSHTunnel:
             return True
         except Exception:
             return False
+
     def _read_output(self):
         url_pattern = re.compile(r"https://[a-zA-Z0-9.-]+(?:\.lhr\.life|\.localhost\.run)")
         try:

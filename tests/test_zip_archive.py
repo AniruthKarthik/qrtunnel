@@ -31,4 +31,3 @@ def test_build_zip_archive_single_directory(tmp_path):
     data = FileTransferHandler.build_zip_archive(FileTransferHandler, file_paths=[str(directory)])
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         assert "images/pic.png" in archive.namelist()
-

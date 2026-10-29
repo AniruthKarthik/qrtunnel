@@ -168,9 +168,7 @@ def get_public_ip(timeout=2.0):
     try:
         import urllib.request
 
-        req = urllib.request.Request(
-            "https://api.ipify.org", headers={"User-Agent": "qrtunnel"}
-        )
+        req = urllib.request.Request("https://api.ipify.org", headers={"User-Agent": "qrtunnel"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             ip = resp.read().decode("utf-8").strip()
             if ip:
@@ -233,5 +231,3 @@ def is_same_network(client_ip, server_lan_ip=None):
             pass
 
     return False
-
-

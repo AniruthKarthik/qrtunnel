@@ -168,7 +168,9 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
 
     # ── QR code ──
     target_url = (
-        tunnel_manager.lan_url if lan_only else (tunnel_manager.public_url or tunnel_manager.lan_url)
+        tunnel_manager.lan_url
+        if lan_only
+        else (tunnel_manager.public_url or tunnel_manager.lan_url)
     )
     generate_qr_code(target_url, no_qr=no_qr)
 

@@ -36,7 +36,7 @@ def test_tunnel_manager_cloudflare_backend(monkeypatch):
 
 def test_ssh_tunnel_regex_pattern():
     import re
+
     pattern = re.compile(r"https://[a-zA-Z0-9.-]+(?:\.lhr\.life|\.localhost\.run)")
     assert pattern.search("https://abc-123.lhr.life") is not None
     assert pattern.search("https://xyz-456.localhost.run") is not None
-

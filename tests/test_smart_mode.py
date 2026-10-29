@@ -88,4 +88,3 @@ def test_get_upload_success_page_light_theme():
     assert "document.pdf" in html
     assert "#f8fafc" in html  # Light theme background
     assert "Upload Complete" in html
-
