@@ -60,12 +60,12 @@ def test_download_page_renders_individual_and_zip_options(tmp_path):
     assert 'class="file-cb"' in html
     assert 'id="select-all-btn"' in html
 
-    # Selected zip download button
+    # Selected zip download button is present
     assert 'id="download-selected-btn"' in html
 
-    # All zip download button
-    assert 'id="download-all-btn"' in html
-    assert "/download/all.zip" in html
+    # Download all button was removed in favor of selective download
+    assert 'id="download-all-btn"' not in html
+    assert "/download/all.zip" not in html
 
 
 def test_serve_selected_zip(tmp_path):
@@ -100,6 +100,16 @@ def test_serve_selected_zip(tmp_path):
         assert "banana.txt" not in names
         assert archive.read("apple.txt") == b"apple pie"
         assert archive.read("cherry.txt") == b"cherry tart"
+
+
+def test_build_zip_archive_uses_zip_stored(tmp_path):
+    """Verify build_zip_archive uses fast ZIP_STORED without slow CPU compression."""
+    f = tmp_path / "fast.txt"
+    f.write_text("fast content")
+    data = FileTransferHandler.build_zip_archive(FileTransferHandler, file_paths=[str(f)])
+    with zipfile.ZipFile(io.BytesIO(data), "r") as archive:
+        info = archive.getinfo("fast.txt")
+        assert info.compress_type == zipfile.ZIP_STORED
 
 
 def test_upload_page_has_multiple_input():

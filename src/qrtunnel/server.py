@@ -713,12 +713,6 @@ uploadForm.addEventListener('submit', (e) => {
     </a>
   </div>
 </li>"""
-        zip_link_html = ""
-        if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
-            zip_link_html = """<a href="/download/all.zip" class="zip-button" id="download-all-btn">
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-  <span>Download All (.zip)</span>
-</a>"""
         template = """<!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
@@ -762,11 +756,6 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
                   cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:14px; box-shadow:0 1px 2px rgba(5,150,105,0.2); }
 .selected-button:hover { background:#047857; }
 .selected-button:active { transform:scale(0.99); }
-.zip-button { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:14px 20px;
-              background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:15px; font-weight:600;
-              text-decoration:none; cursor:pointer; transition:background 0.15s, transform 0.1s; margin-top:12px; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
-.zip-button:hover { background:#1d4ed8; }
-.zip-button:active { transform:scale(0.99); }
 .footer { text-align:center; margin-top:24px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style></head><body>
 <div class="container">
@@ -775,7 +764,7 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 </div>
 <h1>Download Files</h1>
-<p class="subtitle">Download files individually or bundled as a zip</p>
+<p class="subtitle">Download files individually or select files to bundle as a zip</p>
 </div>
 <div class="file-section">
 <div class="file-section-header">
@@ -790,7 +779,6 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
   <span id="selected-btn-text">Download Selected (.zip)</span>
 </button>
-__ZIP_LINK__
 </div>
 <p class="footer">qrtunnel</p>
 </div>
@@ -835,10 +823,8 @@ if (dlSelectedBtn) {
 }
 </script>
 </body></html>"""
-        html = (
-            template.replace("__FILE_LIST__", file_list_html)
-            .replace("__ZIP_LINK__", zip_link_html)
-            .replace("__FILE_COUNT__", str(len(self.file_paths)))
+        html = template.replace("__FILE_LIST__", file_list_html).replace(
+            "__FILE_COUNT__", str(len(self.file_paths))
         )
         self.send_response(200)
         self.send_header("Content-type", "text/html")
@@ -864,7 +850,7 @@ if (dlSelectedBtn) {
     def build_zip_archive(self, file_paths=None):
         buffer = io.BytesIO()
         paths = file_paths if file_paths is not None else self.file_paths
-        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
             for fp in paths:
                 path = Path(fp)
                 if path.is_dir():
@@ -889,7 +875,7 @@ if (dlSelectedBtn) {
             self._send_auth_cookie_if_needed()
             self.end_headers()
             sent = 0
-            chunk_size = 262144  # 256 KB
+            chunk_size = 1048576  # 1 MB
             last_update = 0
             while sent < total_size:
                 chunk = data[sent : sent + chunk_size]
@@ -945,7 +931,7 @@ if (dlSelectedBtn) {
             self._send_auth_cookie_if_needed()
             self.end_headers()
             sent = 0
-            chunk_size = 262144  # 256 KB
+            chunk_size = 1048576  # 1 MB
             last_update = 0
             while sent < total_size:
                 chunk = data[sent : sent + chunk_size]
