@@ -371,7 +371,6 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 </div></body></html>"""
 
     def send_upload_page(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
         html = f"""<!DOCTYPE html>
 <html><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -532,7 +531,6 @@ uploadForm.addEventListener('submit', (e) => {{
 
     # ── download page ──
     def send_download_page(self):
-        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
         file_list_html = ""
         basenames = [os.path.basename(fp) for fp in self.file_paths]
         has_duplicates = len(basenames) != len(set(basenames))

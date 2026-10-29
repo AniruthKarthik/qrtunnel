@@ -1,4 +1,6 @@
-from unittest.mock import MagicMock
+import urllib.request
+
+import qrtunnel.utils
 from qrtunnel.server import FileTransferHandler
 from qrtunnel.utils import get_public_ip
 
@@ -14,13 +16,11 @@ def test_get_public_ip(monkeypatch):
         def read(self):
             return b"203.0.113.195\n"
 
-    import urllib.request
     monkeypatch.setattr(urllib.request, "urlopen", lambda req, timeout=2.0: FakeResponse())
-    
+
     # Reset cached ip
-    import qrtunnel.utils
     qrtunnel.utils._CACHED_PUBLIC_IP = None
-    
+
     ip = get_public_ip()
     assert ip == "203.0.113.195"
 

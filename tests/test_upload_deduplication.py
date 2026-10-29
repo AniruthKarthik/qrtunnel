@@ -1,11 +1,9 @@
-import io
 from pathlib import Path
-from qrtunnel.server import FileTransferHandler
 
 
 def test_upload_deduplication_avoids_overwriting(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    
+
     # Pre-create a file named report.txt
     existing = tmp_path / "report.txt"
     existing.write_text("original content")
