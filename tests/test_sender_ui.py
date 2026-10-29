@@ -217,7 +217,7 @@ def test_sender_api_share_multiple_files(tmp_path):
     assert len(sender_sync.file_paths) == 2
 
 
-def test_browser_launch_and_close():
+def test_browser_launch_and_safe_close():
     with patch("shutil.which", return_value="/usr/bin/mock-browser"):
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
@@ -230,5 +230,34 @@ def test_browser_launch_and_close():
             args = mock_popen.call_args[0][0]
             assert "--app=http://127.0.0.1:6969/sender" in args or "--new-window" in args
 
+            # close_browser_window is a safe no-op to prevent closing other tabs
             close_browser_window()
-            mock_proc.terminate.assert_called_once()
+            mock_proc.terminate.assert_not_called()
+
+
+def test_parse_args_direct_and_tui(monkeypatch):
+    from qrtunnel.app import parse_args
+
+    # Direct qrtunnel run (UI Mode, command is None)
+    monkeypatch.setattr("sys.argv", ["qrtunnel"])
+    args, port = parse_args()
+    assert args.command is None
+    assert port == 6969
+
+    # Direct with custom port -8080
+    monkeypatch.setattr("sys.argv", ["qrtunnel", "-8080"])
+    args, port = parse_args()
+    assert args.command is None
+    assert port == 8080
+
+    # Explicit qrtunnel tui command
+    monkeypatch.setattr("sys.argv", ["qrtunnel", "tui"])
+    args, port = parse_args()
+    assert args.command == "tui"
+    assert port == 6969
+
+    # Explicit qrtunnel tui with port
+    monkeypatch.setattr("sys.argv", ["qrtunnel", "tui", "-9090"])
+    args, port = parse_args()
+    assert args.command == "tui"
+    assert port == 9090

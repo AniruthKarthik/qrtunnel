@@ -932,14 +932,19 @@ evtSource.addEventListener('progress', (e) => {
     }
 });
 
-evtSource.addEventListener('close', () => {
-    window.close();
+function showSessionEnded() {
     document.body.innerHTML = `
       <div class="container" style="text-align:center;padding:48px 24px;">
-        <h1 style="color:#64748b;margin-bottom:8px;">Session Ended</h1>
-        <p class="subtitle">qrtunnel has closed. You can close this window.</p>
+        <div class="badge-icon" style="background:#f1f5f9;color:#64748b;margin:0 auto 16px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <h1 style="color:#0f172a;margin-bottom:8px;font-size:20px;font-weight:700;">Session Ended</h1>
+        <p class="subtitle">qrtunnel has stopped. You can safely close this window.</p>
       </div>`;
-    setTimeout(() => window.close(), 150);
+}
+
+evtSource.addEventListener('close', () => {
+    showSessionEnded();
 });
 
 function closeNotification() {
@@ -953,10 +958,8 @@ setInterval(() => {
 }, 1500);
 
 stopBtn.addEventListener('click', () => {
-    fetch('/api/sender/stop', { method: 'POST' }).then(() => {
-        window.close();
-    }).catch(() => {
-        window.close();
+    fetch('/api/sender/stop', { method: 'POST' }).finally(() => {
+        showSessionEnded();
     });
 });
 </script>

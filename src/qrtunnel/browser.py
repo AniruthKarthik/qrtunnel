@@ -1,4 +1,4 @@
-"""Cross-platform helper to launch and close a dedicated browser window."""
+"""Cross-platform helper to launch a dedicated browser window."""
 
 import os
 import platform
@@ -7,13 +7,9 @@ import subprocess
 import webbrowser
 from typing import Optional
 
-_browser_process: Optional[subprocess.Popen] = None
-
 
 def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
     """Open *url* in a new browser window (not tab) across Linux, macOS, and Windows."""
-    global _browser_process
-
     # On Linux, verify display server is accessible
     if platform.system() == "Linux":
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
@@ -41,7 +37,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
                 )
-                _browser_process = proc
                 return proc
             except Exception:
                 try:
@@ -51,7 +46,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
-                    _browser_process = proc
                     return proc
                 except Exception:
                     pass
@@ -66,7 +60,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            _browser_process = proc
             return proc
         except Exception:
             pass
@@ -80,7 +73,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-                _browser_process = proc
                 return proc
             except Exception:
                 pass
@@ -90,7 +82,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            _browser_process = proc
             return proc
         except Exception:
             pass
@@ -105,7 +96,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
-                _browser_process = proc
                 return proc
             except Exception:
                 pass
@@ -120,17 +110,5 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
 
 
 def close_browser_window():
-    """Terminate the browser process if active."""
-    global _browser_process
-    if _browser_process is not None:
-        try:
-            if _browser_process.poll() is None:
-                _browser_process.terminate()
-                _browser_process.wait(timeout=0.8)
-        except Exception:
-            try:
-                _browser_process.kill()
-            except Exception:
-                pass
-        finally:
-            _browser_process = None
+    """No-op: automatic browser process termination is disabled to prevent closing other tabs."""
+    pass
