@@ -261,11 +261,21 @@ h2 {{ margin-top: 0; }}
 
     # ── upload handler ──
     def handle_upload(self):
+        temp_path = None
         try:
-            content_length = int(self.headers["Content-Length"])
+            content_length_str = self.headers.get("Content-Length")
+            if not content_length_str:
+                self.send_error(411, "Length Required")
+                return
+            try:
+                content_length = int(content_length_str)
+            except ValueError:
+                self.send_error(400, "Invalid Content-Length")
+                return
+
             stream = LimitedStream(self.rfile, content_length)
             parser = StreamingFormDataParser(headers=self.headers)
-            temp_filename = f"upload_{int(time.time())}.tmp"
+            temp_filename = f"upload_{uuid.uuid4().hex}.tmp"
             temp_path = Path.cwd() / temp_filename
             file_target = FileTarget(str(temp_path))
             parser.register("file", file_target)
@@ -284,30 +294,51 @@ h2 {{ margin-top: 0; }}
             self.print_progress("Upload", received, content_length, force=True)
             print()
             if not getattr(file_target, "multipart_filename", None):
+                if temp_path.exists():
+                    temp_path.unlink()
                 self.send_error(400, "File not found in form data")
                 return
             sanitized_filename = os.path.basename(unquote(file_target.multipart_filename))
             if not sanitized_filename:
+                if temp_path.exists():
+                    temp_path.unlink()
                 self.send_error(400, "Invalid filename")
                 return
-            final_path = Path.cwd() / sanitized_filename
+
+            # Avoid silent overwrite by deduplicating filename
+            base_stem = Path(sanitized_filename).stem
+            base_ext = Path(sanitized_filename).suffix
+            saved_filename = sanitized_filename
+            counter = 1
+            final_path = Path.cwd() / saved_filename
+            while final_path.exists():
+                saved_filename = f"{base_stem} ({counter}){base_ext}"
+                final_path = Path.cwd() / saved_filename
+                counter += 1
+
             os.rename(temp_path, final_path)
-            print(f"{OK} File '{sanitized_filename}' received and saved to {final_path}")
+            print(f"{OK} File '{saved_filename}' received and saved to {final_path}")
             print(f"{OK} SHA256: {sha256_file(final_path)}")
             log_transfer(
-                sanitized_filename,
+                saved_filename,
                 os.path.getsize(final_path),
                 self.client_address[0],
                 "receive",
             )
             self.send_response(200)
             self.send_header("Content-type", "text/html")
-            success_html = self.get_upload_success_page(sanitized_filename)
+            success_html = self.get_upload_success_page(saved_filename)
             self.send_header("Content-Length", str(len(success_html)))
+            self._send_auth_cookie_if_needed()
             self.end_headers()
             self.wfile.write(success_html.encode())
             self.close_connection = True
         except Exception as e:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
             print(f"{ERR} Error during upload: {e}")
             self.send_error(500, "Internal Server Error")
 
