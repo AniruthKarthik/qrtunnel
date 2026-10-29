@@ -46,3 +46,4 @@ publish.yml
 labels.yml
 .codex
 ref.md
+uv.lock
