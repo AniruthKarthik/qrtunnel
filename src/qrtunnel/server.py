@@ -5,6 +5,7 @@ import io
 import os
 import platform
 import re
+import threading
 import time
 import uuid
 import zipfile
@@ -20,7 +21,9 @@ from .config import Config
 from .constants import ERR, INFO, OK, WRN
 from .history import log_transfer
 from .streams import LimitedStream
-from .utils import format_progress, is_same_lan, sha256_file
+from .utils import format_progress, format_size, is_same_lan, sha256_file
+
+_stdout_lock = threading.Lock()
 
 
 # ─────────────────────────────────────────────────────────
@@ -40,7 +43,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         now = time.monotonic()
         if not force and now - last_update < 0.25:
             return last_update
-        print(f"\r[*] {label}: {format_progress(transferred, total)}", end="", flush=True)
+        with _stdout_lock:
+            # \033[K clears from cursor position to the end of the line
+            print(f"\r\033[K[*] {label}: {format_progress(transferred, total)}", end="", flush=True)
         return now
 
     # ── auth ──
@@ -316,6 +321,10 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 #file-input {{ opacity:0; position:absolute; top:0; left:0; width:100%; height:100%; cursor:pointer; }}
 .file-input-label {{ font-size:14px; font-weight:500; color:#ccc; }}
 #file-name {{ margin-top:12px; font-size:12px; font-family:'SF Mono','Consolas',monospace; color:#888; }}
+.progress-container {{ display:none; margin-top:6px; }}
+.progress-bar-bg {{ background:#0f0f1a; border-radius:6px; height:12px; overflow:hidden; border:1px solid #2a3a5e; }}
+.progress-bar-fill {{ background:linear-gradient(90deg, #4361ee, #4cc9f0); height:100%; width:0%; transition:width 0.15s ease; }}
+.progress-info {{ display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:#aaa; font-family:'SF Mono','Consolas',monospace; }}
 .submit-button {{ display:block; width:100%; padding:16px 24px; background:#4361ee; color:#fff;
                   border:none; border-radius:6px; font-size:15px; font-weight:500; cursor:pointer;
                   text-align:center; transition:background 0.2s; opacity:0.5; pointer-events:none; }}
@@ -331,6 +340,14 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 <input type="file" id="file-input" name="file" required>
 <p id="file-name"></p>
 </div>
+<div id="progress-container" class="progress-container">
+<div class="progress-bar-bg"><div id="progress-bar" class="progress-bar-fill"></div></div>
+<div class="progress-info">
+<span id="progress-pct">0%</span>
+<span id="progress-speed">0 B/s</span>
+<span id="progress-stats">0 B / 0 B</span>
+</div>
+</div>
 <button type="submit" id="submit-btn" class="submit-button">Upload</button>
 </form>
 <div id="lan-discovery" style="margin-top:20px;text-align:center;display:none;">
@@ -343,14 +360,96 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 const fileInput = document.getElementById('file-input');
 const fileNameDisplay = document.getElementById('file-name');
 const submitButton = document.getElementById('submit-btn');
+const uploadForm = document.getElementById('upload-form');
+const progressContainer = document.getElementById('progress-container');
+const progressBar = document.getElementById('progress-bar');
+const progressPct = document.getElementById('progress-pct');
+const progressSpeed = document.getElementById('progress-speed');
+const progressStats = document.getElementById('progress-stats');
+
+function formatBytes(bytes) {{
+    if (bytes < 1024) return bytes + ' B';
+    var kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + ' KB';
+    var mb = kb / 1024;
+    if (mb < 1024) return mb.toFixed(1) + ' MB';
+    var gb = mb / 1024;
+    return gb.toFixed(1) + ' GB';
+}}
+
 fileInput.addEventListener('change', () => {{
     if (fileInput.files.length > 0) {{
-        fileNameDisplay.textContent = 'Selected: ' + fileInput.files[0].name;
+        fileNameDisplay.textContent = 'Selected: ' + fileInput.files[0].name + ' (' + formatBytes(fileInput.files[0].size) + ')';
         submitButton.classList.add('enabled');
     }} else {{
         fileNameDisplay.textContent = '';
         submitButton.classList.remove('enabled');
     }}
+}});
+
+uploadForm.addEventListener('submit', (e) => {{
+    if (!fileInput.files.length) return;
+    e.preventDefault();
+    submitButton.classList.remove('enabled');
+    submitButton.style.opacity = '0.5';
+    submitButton.style.pointerEvents = 'none';
+    submitButton.textContent = 'Uploading...';
+    progressContainer.style.display = 'block';
+
+    var file = fileInput.files[0];
+    var formData = new FormData();
+    formData.append('file', file);
+
+    var xhr = new XMLHttpRequest();
+    var lastLoaded = 0;
+    var lastTime = Date.now();
+
+    xhr.upload.onprogress = (ev) => {{
+        if (ev.lengthComputable) {{
+            var now = Date.now();
+            var pct = ((ev.loaded / ev.total) * 100).toFixed(1);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressStats.textContent = formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total);
+
+            var elapsedSec = (now - lastTime) / 1000;
+            if (elapsedSec >= 0.4) {{
+                var speed = (ev.loaded - lastLoaded) / elapsedSec;
+                progressSpeed.textContent = formatBytes(speed) + '/s';
+                lastLoaded = ev.loaded;
+                lastTime = now;
+            }}
+
+            if (ev.loaded >= ev.total) {{
+                submitButton.textContent = 'Processing on server...';
+            }}
+        }}
+    }};
+
+    xhr.onload = () => {{
+        if (xhr.status === 200) {{
+            document.open();
+            document.write(xhr.responseText);
+            document.close();
+        }} else {{
+            alert('Upload failed: ' + xhr.statusText);
+            submitButton.classList.add('enabled');
+            submitButton.style.opacity = '1';
+            submitButton.style.pointerEvents = 'auto';
+            submitButton.textContent = 'Upload';
+        }}
+    }};
+
+    xhr.onerror = () => {{
+        alert('Network error occurred during upload.');
+        submitButton.classList.add('enabled');
+        submitButton.style.opacity = '1';
+        submitButton.style.pointerEvents = 'auto';
+        submitButton.textContent = 'Upload';
+    }};
+
+    xhr.open('POST', '/upload', true);
+    xhr.send(formData);
 }});
 (function() {{
     var lanIp = "{lan_ip}";
@@ -382,7 +481,11 @@ fileInput.addEventListener('change', () => {{
         file_list_html = ""
         for fp in self.file_paths:
             fn = os.path.basename(fp)
-            file_list_html += f'<li><a href="/download/{fn}" class="file-link">{fn}</a></li>'
+            size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
+            file_list_html += (
+                f'<li><a href="/download/{fn}" class="file-link">'
+                f'<span>{fn}</span><span class="file-size">{size_label}</span></a></li>'
+            )
         zip_link_html = ""
         if len(self.file_paths) > 1 or any(os.path.isdir(fp) for fp in self.file_paths):
             zip_link_html = '<a href="/download/all.zip" class="zip-link">Download all as ZIP</a>'
@@ -405,10 +508,11 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
 .file-list {{ list-style:none; background:#0f0f1a; border-radius:6px; border:1px solid #2a3a5e; }}
 .file-list li {{ border-bottom:1px solid #2a3a5e; }}
 .file-list li:last-child {{ border-bottom:none; }}
-.file-link {{ display:block; padding:12px 16px; font-size:14px;
+.file-link {{ display:flex; justify-content:space-between; align-items:center; padding:12px 16px; font-size:14px;
               font-family:'SF Mono','Consolas',monospace; color:#ccc;
               text-decoration:none; transition:background-color 0.2s; }}
 .file-link:hover {{ background-color:#2a3a5e; }}
+.file-size {{ font-size:12px; color:#888; margin-left:12px; }}
 .zip-link {{ display:block; margin-top:16px; padding:12px 16px; background:#4361ee; color:#fff;
              border-radius:6px; text-decoration:none; text-align:center; font-size:14px; }}
 .zip-link:hover {{ background:#3a56d4; }}
@@ -482,16 +586,28 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
     def serve_zip_archive(self):
         try:
             data = self.build_zip_archive()
+            total_size = len(data)
             self.send_response(200)
             self.send_header("Content-type", "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="qrtunnel-files.zip"')
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(total_size))
             self.end_headers()
-            self.wfile.write(data)
+            sent = 0
+            chunk_size = 262144  # 256 KB
+            last_update = 0
+            while sent < total_size:
+                chunk = data[sent : sent + chunk_size]
+                self.wfile.write(chunk)
+                sent += len(chunk)
+                last_update = self.print_progress(
+                    "Download all.zip", sent, total_size, last_update=last_update
+                )
+            self.print_progress("Download all.zip", sent, total_size, force=True)
+            print()
             print(f"{OK} ZIP archive served to {self.client_address[0]}")
-            log_transfer("qrtunnel-files.zip", len(data), self.client_address[0], "send")
+            log_transfer("qrtunnel-files.zip", total_size, self.client_address[0], "send")
         except BrokenPipeError:
-            print(f"{ERR} Client disconnected during ZIP transfer")
+            print(f"\n{ERR} Client disconnected during ZIP transfer")
         except Exception as e:
             print(f"{ERR} Error serving ZIP archive: {e}")
             self.send_error(500, "Internal Server Error")
@@ -536,32 +652,34 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                     try:
                         sent = 0
                         last_update = 0
+                        chunk_size = 262144  # 256 KB slice for smooth progress reporting
                         while sent < content_length:
+                            to_send = min(chunk_size, content_length - sent)
                             n = os.sendfile(
                                 self.connection.fileno(),
                                 f.fileno(),
                                 start + sent,
-                                content_length - sent,
+                                to_send,
                             )
                             if n == 0:
                                 break
                             sent += n
                             last_update = self.print_progress(
                                 f"Download {filename}",
-                                sent,
-                                content_length,
+                                start + sent,
+                                file_size,
                                 last_update=last_update,
                             )
                         self.print_progress(
-                            f"Download {filename}", sent, content_length, force=True
+                            f"Download {filename}", start + sent, file_size, force=True
                         )
                         print()
                     except BrokenPipeError:
-                        print(f"{ERR} Client disconnected during transfer of '{filename}'")
+                        print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
                 else:
                     try:
                         remaining = content_length
-                        chunk_size = 1024 * 1024
+                        chunk_size = 262144  # 256 KB
                         sent = 0
                         last_update = 0
                         while remaining > 0:
@@ -573,16 +691,16 @@ h1 {{ font-size:24px; font-weight:600; margin-bottom:8px; color:#fff; }}
                             sent += len(chunk)
                             last_update = self.print_progress(
                                 f"Download {filename}",
-                                sent,
-                                content_length,
+                                start + sent,
+                                file_size,
                                 last_update=last_update,
                             )
                         self.print_progress(
-                            f"Download {filename}", sent, content_length, force=True
+                            f"Download {filename}", start + sent, file_size, force=True
                         )
                         print()
                     except BrokenPipeError:
-                        print(f"{ERR} Client disconnected during transfer of '{filename}'")
+                        print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
             if not range_req or (range_req and end == file_size - 1):
                 print(f"{OK} File '{filename}' served to {self.client_address[0]}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")
