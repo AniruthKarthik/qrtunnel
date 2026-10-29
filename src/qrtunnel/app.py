@@ -35,7 +35,7 @@ from .qr import generate_qr_code
 from .server import FileTransferHandler, ThreadingHTTPServer
 from .tui import run_tui
 from .tunnels import TunnelManager
-from .utils import format_size, get_lan_ip
+from .utils import format_size, get_lan_ip, get_public_ip
 
 
 # ─────────────────────────────────────────────────────────
@@ -43,6 +43,8 @@ from .utils import format_size, get_lan_ip
 # ─────────────────────────────────────────────────────────
 def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seconds=None):
     """Everything that happens after the user confirms in the TUI."""
+    # Pre-warm public IP detection in background for seamless smart mode
+    threading.Thread(target=get_public_ip, daemon=True).start()
     Config.LOCAL_PORT = port
     Config.OTP = f"{random.randint(0, 999999):06d}"
 

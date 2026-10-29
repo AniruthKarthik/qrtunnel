@@ -22,7 +22,13 @@ from .config import Config
 from .constants import ERR, INFO, OK, WRN
 from .history import log_transfer
 from .streams import LimitedStream
-from .utils import format_progress, format_size, is_same_lan, sha256_file
+from .utils import (
+    format_progress,
+    format_size,
+    is_same_lan,
+    is_same_network,
+    sha256_file,
+)
 
 _stdout_lock = threading.Lock()
 
@@ -138,16 +144,43 @@ h2 {{ margin-top: 0; }}
         self.end_headers()
         self.wfile.write(html.encode())
 
+    # ── client network detection ──
+    def get_real_client_ip(self):
+        cf_ip = self.headers.get("CF-Connecting-IP")
+        if cf_ip:
+            return cf_ip.strip()
+        xff = self.headers.get("X-Forwarded-For")
+        if xff:
+            return xff.split(",")[0].strip()
+        x_real = self.headers.get("X-Real-IP")
+        if x_real:
+            return x_real.strip()
+        return self.client_address[0]
+
+    def is_tunnel_request(self):
+        return bool(
+            self.headers.get("CF-Connecting-IP")
+            or self.headers.get("X-Forwarded-For")
+            or self.headers.get("X-Real-IP")
+        )
+
+    def is_request_from_same_lan(self):
+        lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
+        if not lan_ip or lan_ip in ("None", "127.0.0.1"):
+            return False
+        real_ip = self.get_real_client_ip()
+        return is_same_network(real_ip, lan_ip)
+
     # ── logging ──
     def log_message(self, format, *args):
         client_ip = self.client_address[0]
+        real_ip = self.get_real_client_ip()
 
-        # Check for forwarded IP (tunnels)
-        forwarded_for = self.headers.get("X-Forwarded-For")
-        if forwarded_for:
-            # X-Forwarded-For can be a list, take the first one
-            real_ip = forwarded_for.split(",")[0].strip()
-            conn_type = f"{INFO} Tunnel"
+        if self.is_tunnel_request():
+            if self.is_request_from_same_lan():
+                conn_type = f"{OK} Smart LAN (via Tunnel)"
+            else:
+                conn_type = f"{INFO} Tunnel"
             display_ip = real_ip
         else:
             is_local = client_ip in ("127.0.0.1", "::1")
@@ -158,7 +191,7 @@ h2 {{ margin-top: 0; }}
                 conn_type = f"{OK} LAN"
                 display_ip = client_ip
             else:
-                conn_type = f"{INFO} Tunnel"
+                conn_type = f"{INFO} Remote"
                 display_ip = client_ip
 
         path = self.path
@@ -177,6 +210,17 @@ h2 {{ margin-top: 0; }}
             self.send_upload_page()
         else:
             if parsed_path.path.startswith("/download/"):
+                if self.is_tunnel_request() and self.is_request_from_same_lan():
+                    lan_ip = str(self.server_lan_ip) if self.server_lan_ip else ""
+                    if lan_ip and lan_ip not in ("None", "127.0.0.1"):
+                        token = str(uuid.uuid4())
+                        self.authorized_sessions.add(token)
+                        delim = "&" if "?" in self.path else "?"
+                        lan_url = f"http://{lan_ip}:{Config.LOCAL_PORT}{self.path}{delim}auth={token}"
+                        self.send_response(302)
+                        self.send_header("Location", lan_url)
+                        self.end_headers()
+                        return
                 self.serve_single_file(unquote(parsed_path.path[len("/download/") :]))
             elif parsed_path.path in ("/", "/index.html"):
                 self.send_download_page()
@@ -232,6 +276,28 @@ h2 {{ margin-top: 0; }}
         delim = "&" if "?" in lan_target else "?"
         lan_url = f"{lan_target}{delim}auth={token}"
 
+        is_same_net = self.is_request_from_same_lan()
+        if is_same_net:
+            # Client verified on same Wi-Fi / local network: unhide switch link and auto-redirect
+            return f"""
+    <script>
+        (function() {{
+            var lanIp = "{lan_ip}";
+            var lanUrl = "{lan_url}";
+            if (window.location.hostname !== lanIp) {{
+                var discoveryDiv = document.getElementById('lan-discovery');
+                var lanBtn = document.getElementById('lan-btn');
+                if (discoveryDiv && lanBtn) {{
+                    discoveryDiv.style.display = 'block';
+                    lanBtn.href = lanUrl;
+                }}
+                setTimeout(function() {{
+                    window.location.href = lanUrl;
+                }}, 250);
+            }}
+        }})();
+    </script>"""
+
         return f"""
     <script>
         (function() {{
@@ -247,11 +313,9 @@ h2 {{ margin-top: 0; }}
                         discoveryDiv.style.display = 'block';
                         lanBtn.href = lanUrl;
                     }}
-                    if (window.location.protocol === "http:") {{
-                        setTimeout(function() {{
-                            window.location.href = lanUrl;
-                        }}, 100);
-                    }}
+                    setTimeout(function() {{
+                        window.location.href = lanUrl;
+                    }}, 100);
                 }};
                 img.src = "http://" + lanIp + ":" + lanPort + "/ping?t=" + Date.now();
             }}
