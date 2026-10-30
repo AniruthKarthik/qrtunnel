@@ -422,6 +422,9 @@ class CloudflareTunnel:
         self.name = "cloudflared"
         self.output_thread = None
         self.url_found = threading.Event()
+        self.connection_registered = threading.Event()
+        self.connection_failed = threading.Event()
+        self.fail_count = 0
         self.bin_path = get_cloudflared_path() or "cloudflared"
 
     def check_cloudflared(self):
@@ -437,6 +440,14 @@ class CloudflareTunnel:
 
     def _read_output(self):
         url_pattern = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
+        reg_pattern = re.compile(
+            r"(?:Registered tunnel connection|Connection [a-f0-9-]+ registered|registered connIndex=\d+)",
+            re.IGNORECASE,
+        )
+        fail_pattern = re.compile(
+            r"(?:Unable to establish connection with Cloudflare edge|failed to dial to edge with quic|connect: connection refused|Serve tunnel error.*:7844|failed to dial to edge)",
+            re.IGNORECASE,
+        )
         try:
             while self.process and self.process.poll() is None:
                 line = self.process.stdout.readline()
@@ -444,10 +455,24 @@ class CloudflareTunnel:
                     time.sleep(0.1)
                     continue
                 clean_line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+                if not clean_line:
+                    continue
+
+                # 1. Capture public tunnel URL
                 match = url_pattern.search(clean_line)
                 if match and not self.public_url:
                     self.public_url = match.group(0)
                     self.url_found.set()
+
+                # 2. Check for successful edge connection registration
+                if reg_pattern.search(clean_line):
+                    self.connection_registered.set()
+
+                # 3. Detect edge dial failures (port 7844 refused / blocked)
+                if fail_pattern.search(clean_line):
+                    self.fail_count += 1
+                    if self.fail_count >= 1:
+                        self.connection_failed.set()
         except Exception:
             pass
 
@@ -460,8 +485,20 @@ class CloudflareTunnel:
                 print(f"[!] {self.name} not available, skipping Cloudflare Tunnel")
                 return False
 
+        self.public_url = None
+        self.url_found.clear()
+        self.connection_registered.clear()
+        self.connection_failed.clear()
+        self.fail_count = 0
+
         print(f"[*] Trying {self.name} (no auth required)...")
-        cmd = [self.bin_path, "tunnel", "--url", f"http://localhost:{self.local_port}"]
+        cmd = [
+            self.bin_path,
+            "tunnel",
+            "--no-autoupdate",
+            "--url",
+            f"http://127.0.0.1:{self.local_port}",
+        ]
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -473,15 +510,39 @@ class CloudflareTunnel:
             )
             self.output_thread = threading.Thread(target=self._read_output, daemon=True)
             self.output_thread.start()
-            if self.url_found.wait(timeout=25):
-                print(f"{OK} Connected via {self.name}: {self.public_url}")
-                return True
 
-            print(
-                f"[!] {self.name} timeout - no URL received (check your internet or if cloudflared is blocked)"
-            )
-            self.stop()
-            return False
+            # Wait for public URL banner
+            if not self.url_found.wait(timeout=20):
+                print(
+                    f"[!] {self.name} timeout - no URL received (check your internet or if cloudflared is blocked)"
+                )
+                self.stop()
+                return False
+
+            # URL received from trycloudflare banner; now verify edge connector registration
+            # to prevent broken URLs leading to Cloudflare Error 1033 (HTTP 530)
+            start_t = time.time()
+            while time.time() - start_t < 7.0:
+                if self.connection_registered.is_set():
+                    break
+                if self.connection_failed.is_set() and (time.time() - start_t > 2.5):
+                    break
+                if self.process and self.process.poll() is not None:
+                    break
+                time.sleep(0.2)
+
+            if not self.connection_registered.is_set():
+                print(
+                    "[!] Cloudflare edge unreachable (port 7844 blocked or connection refused)."
+                )
+                print(
+                    "[!] Aborting Cloudflare tunnel to prevent Cloudflare Error 1033."
+                )
+                self.stop()
+                return False
+
+            print(f"{OK} Connected via {self.name}: {self.public_url}")
+            return True
         except Exception as e:
             print(f"[!] {self.name} error: {e}")
             self.stop()
@@ -498,6 +559,7 @@ class CloudflareTunnel:
                 except Exception:
                     pass
             self.process = None
+            self.public_url = None
             print("\n[*] Cloudflare tunnel closed")
 
 
@@ -513,6 +575,8 @@ class TunnelManager:
         self.lan_only = lan_only
         self.tunnel_backend = tunnel_backend.lower() if tunnel_backend else None
         self.fallback_to_lan = False
+        self.fell_back_to_ssh = False
+        self.fell_back_to_cloudflare = False
 
     def _try_tunnel(self, tunnel):
         if tunnel.start():
@@ -551,8 +615,19 @@ class TunnelManager:
         success = False
         if self.tunnel_backend == "cloudflare":
             success = self._try_tunnel(CloudflareTunnel(self.local_port))
+            if not success:
+                print("\n[!] Cloudflare tunnel failed (port 7844 blocked or Error 1033).")
+                print("[*] Automatically falling back to SSH tunnel (ports 22/443, no sign-up required)...")
+                if self._try_tunnel(SSHTunnel(self.local_port)):
+                    success = True
+                    self.fell_back_to_ssh = True
         elif self.tunnel_backend == "ssh":
             success = self._try_tunnel(SSHTunnel(self.local_port))
+            if not success:
+                print("\n[!] SSH tunnel failed. Trying Cloudflare tunnel fallback...")
+                if self._try_tunnel(CloudflareTunnel(self.local_port)):
+                    success = True
+                    self.fell_back_to_cloudflare = True
         elif self.tunnel_backend == "ngrok":
             ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)
             success = self._try_tunnel(ngrok_tunnel)

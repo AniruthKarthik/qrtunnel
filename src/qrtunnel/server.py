@@ -731,6 +731,12 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                     if tm.public_url:
                         target_url = tm.public_url
                         FileTransferHandler.public_url = tm.public_url
+                        if getattr(tm, "fell_back_to_ssh", False) is True and mode_name == "Cloudflare":
+                            mode_name = "SSH"
+                            lan_notice = "Cloudflare unreachable (port 7844 blocked / Error 1033). Switched to SSH tunnel."
+                        elif getattr(tm, "fell_back_to_cloudflare", False) is True and mode_name == "SSH":
+                            mode_name = "Cloudflare"
+                            lan_notice = "SSH tunnel unavailable. Switched to Cloudflare tunnel."
                     else:
                         target_url = tm.lan_url
                         if not lan_notice:
@@ -1116,6 +1122,12 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                     if tm.public_url:
                         target_url = tm.public_url
                         FileTransferHandler.public_url = tm.public_url
+                        if getattr(tm, "fell_back_to_ssh", False) is True and mode_name == "Cloudflare":
+                            mode_name = "SSH"
+                            lan_notice = "Cloudflare unreachable (port 7844 blocked / Error 1033). Switched to SSH tunnel."
+                        elif getattr(tm, "fell_back_to_cloudflare", False) is True and mode_name == "SSH":
+                            mode_name = "Cloudflare"
+                            lan_notice = "SSH tunnel unavailable. Switched to Cloudflare tunnel."
                     else:
                         target_url = tm.lan_url
                         if not lan_notice:
