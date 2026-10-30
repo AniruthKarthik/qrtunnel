@@ -4,6 +4,8 @@ import io
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from qrtunnel.browser import close_browser_window, launch_browser_window
 from qrtunnel.config import Config
 from qrtunnel.qr import generate_qr_svg
@@ -228,7 +230,7 @@ def test_browser_launch_and_safe_close():
             assert proc is mock_proc
             mock_popen.assert_called_once()
             args = mock_popen.call_args[0][0]
-            assert "--app=http://127.0.0.1:6969/sender" in args or "--new-window" in args
+            assert "http://127.0.0.1:6969/sender" in args or "--app=http://127.0.0.1:6969/sender" in args or "--new-window" in args
 
             # close_browser_window is a safe no-op to prevent closing other tabs
             close_browser_window()
@@ -261,3 +263,179 @@ def test_parse_args_direct_and_tui(monkeypatch):
     args, port = parse_args()
     assert args.command == "tui"
     assert port == 9090
+
+    # Explicit qrtunnel ui command is NOT allowed (only 'qrtunnel tui' triggers TUI)
+    monkeypatch.setattr("sys.argv", ["qrtunnel", "ui"])
+    with pytest.raises(SystemExit):
+        parse_args()
+
+
+def test_sender_page_has_port_input_and_lan_notice():
+    handler = create_handler("/sender", method="GET")
+    handler.send_sender_page()
+    html = handler.wfile.getvalue().decode("utf-8")
+    assert 'id="port-input"' in html
+    assert 'id="apply-port-btn"' in html
+    assert 'id="lan-switch-notice"' in html
+    assert 'id="lan-mode-notice"' in html
+    assert "Not in same LAN, switching to the other connection..." in html
+    # Ensure port application does NOT reload the page and clear files
+    assert "window.location.href = data.redirect_url" not in html
+
+
+def test_sender_sync_multi_servers():
+    sync = SenderSync()
+    s1 = MagicMock()
+    s2 = MagicMock()
+    sync.register_server(s1)
+    sync.register_server(s2)
+    assert sync.server == s2
+    assert s1 in sync.servers
+    assert s2 in sync.servers
+
+    sync.shutdown_all_servers()
+    s1.shutdown.assert_called_once()
+    s1.server_close.assert_called_once()
+    s2.shutdown.assert_called_once()
+    s2.server_close.assert_called_once()
+
+
+def test_handle_sender_port():
+    handler = create_handler("/api/sender/port", method="POST", body=b'{"port": 9876}')
+    handler.headers = {"Content-Length": "16", "Content-Type": "application/json"}
+    with patch("qrtunnel.server.ThreadingHTTPServer") as mock_server_cls:
+        mock_server = MagicMock()
+        mock_server_cls.return_value = mock_server
+        handler.handle_sender_port()
+
+        handler.send_response.assert_called_with(200)
+        resp_data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        assert resp_data["success"] is True
+        assert resp_data["port"] == 9876
+        assert resp_data["redirect_url"] == "http://127.0.0.1:9876/sender"
+        assert Config.LOCAL_PORT == 9876
+        assert sender_sync.port == 9876
+
+    # Test invalid port (out of range)
+    Config.LOCAL_PORT = 6969
+    sender_sync.port = 6969
+    handler_bad = create_handler("/api/sender/port", method="POST", body=b'{"port": 99999}')
+    handler_bad.headers = {"Content-Length": "17", "Content-Type": "application/json"}
+    handler_bad.handle_sender_port()
+    handler_bad.send_response.assert_called_with(400)
+
+
+def test_handle_sender_share_lan_fallback(tmp_path):
+    f1 = tmp_path / "doc.txt"
+    f1.write_text("sample content")
+
+    boundary = "----WebKitFormBoundaryLanFallback"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="doc.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+        "sample content\r\n"
+        f"--{boundary}--\r\n"
+    )
+    body_bytes = body.encode("utf-8")
+
+    handler = create_handler(path="/api/sender/share?mode=LAN", method="POST", body=body_bytes)
+    handler.headers = {
+        "Content-Length": str(len(body_bytes)),
+        "Content-Type": f"multipart/form-data; boundary={boundary}",
+    }
+
+    # Simulate host not having a LAN IP
+    with patch("qrtunnel.server.get_lan_ip", return_value=None):
+        with patch("qrtunnel.tunnels.TunnelManager") as mock_tm_cls:
+            mock_tm = MagicMock()
+            mock_tm.start.return_value = True
+            mock_tm.public_url = "https://fallback.trycloudflare.com"
+            mock_tm.lan_url = "http://localhost:6969"
+            mock_tm_cls.return_value = mock_tm
+
+            handler.handle_sender_share()
+
+    handler.send_response.assert_called_with(200)
+    resp = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert resp["success"] is True
+    assert resp["notice"] == "Not in same LAN, switching to the other connection..."
+    assert resp["mode_name"] == "Cloudflare"
+    assert resp["target_url"] == "https://fallback.trycloudflare.com"
+
+
+def test_receiver_pages_contain_session_closed_handling(tmp_path):
+    f = tmp_path / "hello.txt"
+    f.write_text("content")
+
+    handler = create_handler(path="/", method="GET")
+    handler.file_paths = [str(f)]
+
+    # 1. Download page
+    handler.send_download_page()
+    dl_html = handler.wfile.getvalue().decode("utf-8")
+    assert "Session Closed" in dl_html
+    assert "You can safely close this window." in dl_html
+    assert "/api/session/status" in dl_html
+    assert "/api/receiver/events" in dl_html
+
+    # 2. Upload page
+    handler2 = create_handler(path="/", method="GET")
+    handler2.file_paths = []
+    handler2.upload_mode = True
+    handler2.send_upload_page()
+    up_html = handler2.wfile.getvalue().decode("utf-8")
+    assert "Session Closed" in up_html
+    assert "You can safely close this window." in up_html
+
+    # 3. Upload success page
+    success_html = handler2.get_upload_success_page("sample.png")
+    assert "Session Closed" in success_html
+    assert "You can safely close this window." in success_html
+
+    # 4. Login page
+    handler3 = create_handler(path="/", method="GET")
+    handler3.send_login_page()
+    login_html = handler3.wfile.getvalue().decode("utf-8")
+    assert "Session Closed" in login_html
+    assert "You can safely close this window." in login_html
+
+
+def test_session_status_and_receiver_events():
+    sender_sync.initialize(port=6969, pin="1234")
+
+    # Status when active
+    h_status = create_handler(path="/api/session/status", method="GET")
+    h_status.handle_session_status()
+    h_status.send_response.assert_called_with(200)
+    data = json.loads(h_status.wfile.getvalue().decode("utf-8"))
+    assert data["closed"] is False
+
+    # Close session
+    sender_sync.close_from_terminal()
+
+    # Status when closed
+    h_status_closed = create_handler(path="/api/session/status", method="GET")
+    h_status_closed.handle_session_status()
+    data_closed = json.loads(h_status_closed.wfile.getvalue().decode("utf-8"))
+    assert data_closed["closed"] is True
+
+    # Receiver events SSE when closed
+    h_events = create_handler(path="/api/receiver/events", method="GET")
+    h_events.handle_receiver_events()
+    events_output = h_events.wfile.getvalue().decode("utf-8")
+    assert "event: close" in events_output
+    assert '"closed": true' in events_output
+
+
+def test_check_auth_exempts_receiver_session_endpoints():
+    handler = create_handler(path="/api/session/status", method="GET")
+    handler.client_address = ("192.168.1.105", 54321)
+    handler.authorized_sessions = set()
+    assert handler.check_auth() is True
+
+    handler2 = create_handler(path="/api/receiver/events", method="GET")
+    handler2.client_address = ("192.168.1.105", 54321)
+    handler2.authorized_sessions = set()
+    assert handler2.check_auth() is True
+

@@ -18,9 +18,20 @@ class FakeTunnel:
 def test_tunnel_manager_lan_only_requires_lan_ip(monkeypatch):
     monkeypatch.setattr(tunnels, "get_lan_ip", lambda: None)
 
+    # When all fallback tunnels also fail, start() returns False
     manager = tunnels.TunnelManager(8000, lan_only=True)
-
     assert not manager.start()
+
+
+def test_tunnel_manager_lan_only_switches_when_no_lan_ip(monkeypatch):
+    monkeypatch.setattr(tunnels, "get_lan_ip", lambda: None)
+    monkeypatch.setattr(
+        tunnels, "CloudflareTunnel", lambda port: FakeTunnel(port, "cloudflare", succeeds=True)
+    )
+    # When LAN IP is absent, switches to public tunnel without error
+    manager = tunnels.TunnelManager(8000, lan_only=True, tunnel_backend="cloudflare")
+    assert manager.start()
+    assert manager.public_url == "https://cloudflare.example"
 
 
 def test_tunnel_manager_cloudflare_backend(monkeypatch):

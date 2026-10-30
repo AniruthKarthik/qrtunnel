@@ -6,6 +6,8 @@ import platform
 import random
 import socket
 import subprocess
+import threading
+from pathlib import Path
 
 IGNORED_INTERFACE_PREFIXES = (
     "br-",
@@ -40,7 +42,37 @@ def format_progress(transferred, total, width=24):
     return f"[{bar}] {ratio * 100:5.1f}% {format_size(transferred)} / {format_size(total)}"
 
 
-def sha256_file(path, chunk_size=1024 * 1024):
+_CHECKSUM_CACHE = {}
+_CHECKSUM_LOCK = threading.Lock()
+
+
+def store_cached_checksum(path, hexdigest):
+    """Store precomputed checksum (e.g. from upload streaming) to avoid redundant disk reads."""
+    try:
+        p = Path(path)
+        stat = p.stat()
+        cache_key = (str(p.resolve()), stat.st_mtime_ns, stat.st_size)
+        with _CHECKSUM_LOCK:
+            if len(_CHECKSUM_CACHE) > 2048:
+                _CHECKSUM_CACHE.clear()
+            _CHECKSUM_CACHE[cache_key] = hexdigest
+    except Exception:
+        pass
+
+
+def sha256_file(path, chunk_size=1024 * 1024, use_cache=True):
+    cache_key = None
+    if use_cache:
+        try:
+            p = Path(path)
+            stat = p.stat()
+            cache_key = (str(p.resolve()), stat.st_mtime_ns, stat.st_size)
+            with _CHECKSUM_LOCK:
+                if cache_key in _CHECKSUM_CACHE:
+                    return _CHECKSUM_CACHE[cache_key]
+        except Exception:
+            cache_key = None
+
     digest = hashlib.sha256()
     with open(path, "rb") as f:
         while True:
@@ -48,7 +80,15 @@ def sha256_file(path, chunk_size=1024 * 1024):
             if not chunk:
                 break
             digest.update(chunk)
-    return digest.hexdigest()
+    hexdigest = digest.hexdigest()
+
+    if use_cache and cache_key:
+        with _CHECKSUM_LOCK:
+            if len(_CHECKSUM_CACHE) > 2048:
+                _CHECKSUM_CACHE.clear()
+            _CHECKSUM_CACHE[cache_key] = hexdigest
+
+    return hexdigest
 
 
 def is_port_available(port, host="0.0.0.0"):

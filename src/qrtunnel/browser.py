@@ -8,14 +8,14 @@ import webbrowser
 from typing import Optional
 
 
-def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
-    """Open *url* in a new browser window (not tab) across Linux, macOS, and Windows."""
+def launch_browser_window(url: str, as_tab: bool = True) -> Optional[subprocess.Popen]:
+    """Open *url* in a browser tab across Linux, macOS, and Windows."""
     # On Linux, verify display server is accessible
     if platform.system() == "Linux":
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             return None
 
-    # 1. Chromium-based browsers (support --app=URL for a dedicated window without tabs)
+    # 1. Chromium-based browsers (open in a new browser window with full tab bar)
     chromium_candidates = [
         "brave",
         "brave-browser",
@@ -31,8 +31,9 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
         binary = shutil.which(name)
         if binary:
             try:
+                cmd = [binary, "--new-window", url]
                 proc = subprocess.Popen(
-                    [binary, f"--app={url}"],
+                    cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,
@@ -41,7 +42,7 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
             except Exception:
                 try:
                     proc = subprocess.Popen(
-                        [binary, "--new-window", url],
+                        [binary, url],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
@@ -50,12 +51,13 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
                 except Exception:
                     pass
 
-    # 2. Firefox (--new-window)
+    # 2. Firefox (open in a new browser window with full tab bar)
     firefox_binary = shutil.which("firefox")
     if firefox_binary:
         try:
+            cmd = [firefox_binary, "--new-window", url]
             proc = subprocess.Popen(
-                [firefox_binary, "--new-window", url],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -66,16 +68,6 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
 
     # 3. macOS native open command
     if platform.system() == "Darwin":
-        for app in ("Google Chrome", "Brave Browser", "Microsoft Edge"):
-            try:
-                proc = subprocess.Popen(
-                    ["open", "-na", app, "--args", f"--app={url}"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return proc
-            except Exception:
-                pass
         try:
             proc = subprocess.Popen(
                 ["open", "-n", url],
@@ -88,19 +80,18 @@ def launch_browser_window(url: str) -> Optional[subprocess.Popen]:
 
     # 4. Windows start command
     if platform.system() == "Windows":
-        for cmd in ("start chrome --app=", "start msedge --app=", "start brave --app="):
-            try:
-                proc = subprocess.Popen(
-                    f'{cmd}"{url}"',
-                    shell=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                return proc
-            except Exception:
-                pass
+        try:
+            proc = subprocess.Popen(
+                f'start "" "{url}"',
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return proc
+        except Exception:
+            pass
 
-    # 5. Standard Python fallback
+    # 5. Standard Python fallback (opens new window in default browser)
     try:
         webbrowser.open_new(url)
     except Exception:

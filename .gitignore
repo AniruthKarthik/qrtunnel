@@ -48,3 +48,8 @@ labels.yml
 .codex
 ref.md
 uv.lock
+*.mkv
+*.mp4
+*.avi
+*.mov
+*.iso

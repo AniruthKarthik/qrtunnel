@@ -1,14 +1,18 @@
 """Public tunnel providers and tunnel selection."""
 
 import json
+import os
 import platform
 import re
+import shutil
 import subprocess
 import threading
 import time
+import urllib.request
+from pathlib import Path
 
 from .config import Config
-from .constants import ERR, OK
+from .constants import ERR, INFO, OK
 from .utils import get_lan_ip
 
 
@@ -26,6 +30,89 @@ def print_windows_ngrok_install_hint():
     hint = get_windows_ngrok_install_hint()
     if hint:
         print(f"   {hint}")
+
+
+def get_cloudflared_path():
+    """Locate cloudflared binary in PATH, ~/.local/bin, or ~/.qrtunnel/bin."""
+    found = shutil.which("cloudflared")
+    if found:
+        return found
+    home = Path.home()
+    is_win = platform.system() == "Windows"
+    filename = "cloudflared.exe" if is_win else "cloudflared"
+    candidates = [
+        home / ".local" / "bin" / filename,
+        home / ".qrtunnel" / "bin" / filename,
+    ]
+    for c in candidates:
+        if c.is_file() and (is_win or os.access(str(c), os.X_OK)):
+            return str(c)
+    return None
+
+
+def ensure_cloudflared():
+    """Ensure cloudflared is available; automatically downloads static binary if missing."""
+    existing = get_cloudflared_path()
+    if existing:
+        return existing
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    url = None
+
+    if system == "linux":
+        if machine in ("x86_64", "amd64"):
+            url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+        elif machine in ("aarch64", "arm64"):
+            url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
+    elif system == "windows":
+        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
+
+    if not url:
+        return None
+
+    dest_dir = Path.home() / ".qrtunnel" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_file = dest_dir / ("cloudflared.exe" if system == "windows" else "cloudflared")
+
+    try:
+        print("[*] Downloading official cloudflared binary...")
+        urllib.request.urlretrieve(url, str(dest_file))
+        if system != "windows":
+            dest_file.chmod(0o755)
+        print(f"{OK} cloudflared downloaded to {dest_file}")
+        return str(dest_file)
+    except Exception as e:
+        print(f"[!] Could not download cloudflared: {e}")
+        return None
+
+
+def get_ssh_key_args():
+    """Ensure an SSH key exists for nokey SSH tunneling; generates one if missing."""
+    home = Path.home()
+    ssh_dir = home / ".ssh"
+    default_keys = ["id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"]
+    for k in default_keys:
+        if (ssh_dir / k).is_file():
+            return []  # OpenSSH uses default key
+
+    qrtunnel_key = home / ".qrtunnel" / "id_ed25519"
+    if qrtunnel_key.is_file():
+        return ["-i", str(qrtunnel_key)]
+
+    try:
+        qrtunnel_dir = home / ".qrtunnel"
+        qrtunnel_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(qrtunnel_key)],
+            capture_output=True,
+            timeout=5,
+        )
+        if qrtunnel_key.is_file():
+            return ["-i", str(qrtunnel_key)]
+    except Exception:
+        pass
+    return []
 
 
 # ─────────────────────────────────────────────────────────
@@ -200,7 +287,7 @@ class SSHTunnel:
         self.local_port = local_port
         self.process = None
         self.public_url = None
-        self.name = "localhost.run"
+        self.name = "SSH Tunnel"
         self.output_thread = None
         self.url_found = threading.Event()
 
@@ -212,50 +299,28 @@ class SSHTunnel:
             return False
 
     def _read_output(self):
-        url_pattern = re.compile(r"https://[a-zA-Z0-9.-]+(?:\.lhr\.life|\.localhost\.run)")
+        url_pattern = re.compile(
+            r"https://[a-zA-Z0-9.-]+(?:\.lhr\.life|\.localhost\.run|\.free\.pinggy\.net|\.run\.pinggy-free\.link|\.pinggy\.net|\.pinggy\.link)"
+        )
         try:
             while self.process and self.process.poll() is None:
                 line = self.process.stdout.readline()
                 if not line:
                     time.sleep(0.1)
                     continue
-                line = line.strip()
-                if line:
-                    match = url_pattern.search(line)
+                clean_line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+                if clean_line:
+                    match = url_pattern.search(clean_line)
                     if match and not self.public_url:
                         self.public_url = match.group(0)
                         self.url_found.set()
         except Exception:
             pass
 
-    def start(self):
-        if not self.check_ssh():
-            print(f"[!] SSH not available, skipping {self.name}")
-            return False
-        print(f"[*] Trying {self.name} (no auth required)...")
-
-        # Use platform-appropriate null device
-        null_device = "NUL" if platform.system() == "Windows" else "/dev/null"
-
-        cmd = [
-            "ssh",
-            "-o",
-            "StrictHostKeyChecking=no",
-            "-o",
-            f"UserKnownHostsFile={null_device}",
-            "-o",
-            "ServerAliveInterval=60",
-            "-o",
-            "ConnectTimeout=15",
-            "-o",
-            "LogLevel=ERROR",
-            "-o",
-            "AddressFamily=inet",
-            "-T",
-            "-R",
-            f"80:localhost:{self.local_port}",
-            "nokey@localhost.run",
-        ]
+    def _try_provider(self, provider_name, cmd, timeout=12):
+        self.public_url = None
+        self.url_found.clear()
+        print(f"[*] Trying {provider_name} (no auth required)...")
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -267,17 +332,73 @@ class SSHTunnel:
             )
             self.output_thread = threading.Thread(target=self._read_output, daemon=True)
             self.output_thread.start()
-            if self.url_found.wait(timeout=20):
-                print(f"{OK} Connected via {self.name}: {self.public_url}")
+            if self.url_found.wait(timeout=timeout):
+                print(f"{OK} Connected via {provider_name}: {self.public_url}")
                 return True
             else:
-                print(f"[!] {self.name} timeout - no URL received")
+                print(f"[!] {provider_name} timeout - no URL received")
                 self.stop()
                 return False
         except Exception as e:
-            print(f"[!] {self.name} error: {e}")
+            print(f"[!] {provider_name} error: {e}")
             self.stop()
             return False
+
+    def start(self):
+        if not self.check_ssh():
+            print(f"[!] SSH not available, skipping {self.name}")
+            return False
+
+        null_device = "NUL" if platform.system() == "Windows" else "/dev/null"
+        key_args = get_ssh_key_args()
+
+        # 1. Primary provider: localhost.run
+        cmd_lhr = [
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            f"UserKnownHostsFile={null_device}",
+            "-o",
+            "ServerAliveInterval=60",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "LogLevel=ERROR",
+            "-o",
+            "AddressFamily=inet",
+            *key_args,
+            "-T",
+            "-R",
+            f"80:localhost:{self.local_port}",
+            "nokey@localhost.run",
+        ]
+        if self._try_provider("localhost.run", cmd_lhr, timeout=12):
+            return True
+
+        # 2. Fallback provider: pinggy.io (port 443 / HTTPS port - works through restricted firewalls)
+        cmd_pinggy = [
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            f"UserKnownHostsFile={null_device}",
+            "-o",
+            "ServerAliveInterval=60",
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "LogLevel=ERROR",
+            *key_args,
+            "-p",
+            "443",
+            "-R0:localhost:{self.local_port}",
+            "a.pinggy.io",
+        ]
+        if self._try_provider("pinggy.io (port 443)", cmd_pinggy, timeout=12):
+            return True
+
+        return False
 
     def stop(self):
         if self.process:
@@ -301,10 +422,15 @@ class CloudflareTunnel:
         self.name = "cloudflared"
         self.output_thread = None
         self.url_found = threading.Event()
+        self.bin_path = get_cloudflared_path() or "cloudflared"
 
     def check_cloudflared(self):
+        path = get_cloudflared_path()
+        if path:
+            self.bin_path = path
+            return True
         try:
-            subprocess.run(["cloudflared", "--version"], capture_output=True, timeout=2)
+            subprocess.run([self.bin_path, "--version"], capture_output=True, timeout=2)
             return True
         except Exception:
             return False
@@ -317,8 +443,8 @@ class CloudflareTunnel:
                 if not line:
                     time.sleep(0.1)
                     continue
-                line = line.strip()
-                match = url_pattern.search(line)
+                clean_line = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", line).strip()
+                match = url_pattern.search(clean_line)
                 if match and not self.public_url:
                     self.public_url = match.group(0)
                     self.url_found.set()
@@ -327,10 +453,15 @@ class CloudflareTunnel:
 
     def start(self):
         if not self.check_cloudflared():
-            print(f"[!] {self.name} not available, skipping Cloudflare Tunnel")
-            return False
+            ensured = ensure_cloudflared()
+            if ensured:
+                self.bin_path = ensured
+            else:
+                print(f"[!] {self.name} not available, skipping Cloudflare Tunnel")
+                return False
+
         print(f"[*] Trying {self.name} (no auth required)...")
-        cmd = ["cloudflared", "tunnel", "--url", f"http://localhost:{self.local_port}"]
+        cmd = [self.bin_path, "tunnel", "--url", f"http://localhost:{self.local_port}"]
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -380,7 +511,8 @@ class TunnelManager:
         self.auth_manager = NgrokAuth()
         self.noauth = noauth
         self.lan_only = lan_only
-        self.tunnel_backend = tunnel_backend
+        self.tunnel_backend = tunnel_backend.lower() if tunnel_backend else None
+        self.fallback_to_lan = False
 
     def _try_tunnel(self, tunnel):
         if tunnel.start():
@@ -390,6 +522,7 @@ class TunnelManager:
         return False
 
     def start(self):
+        self.fallback_to_lan = False
         if not self.lan_ip:
             self.lan_ip = get_lan_ip()
         if self.lan_ip:
@@ -404,10 +537,12 @@ class TunnelManager:
                 print("=" * 60)
                 return True
             else:
-                print(f"{ERR} Error: Could not detect LAN IP address.")
-                print("  Make sure you are connected to a Wi-Fi or local network.")
+                print(
+                    f"{INFO} Not in same LAN (no local network detected), "
+                    "switching to the other connection..."
+                )
                 print("=" * 60)
-                return False
+                self.lan_only = False
 
         print("\n" + "=" * 60)
         print("ESTABLISHING PUBLIC TUNNEL")
@@ -416,15 +551,18 @@ class TunnelManager:
         success = False
         if self.tunnel_backend == "cloudflare":
             success = self._try_tunnel(CloudflareTunnel(self.local_port))
+        elif self.tunnel_backend == "ssh":
+            success = self._try_tunnel(SSHTunnel(self.local_port))
         elif self.tunnel_backend == "ngrok":
-            success = False
+            ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)
+            success = self._try_tunnel(ngrok_tunnel)
         elif self.noauth:
             success = self._try_tunnel(SSHTunnel(self.local_port))
             if not success and self.tunnel_backend is None:
                 # Fallback: try Cloudflare if installed
                 success = self._try_tunnel(CloudflareTunnel(self.local_port))
 
-        if not success and self.tunnel_backend != "cloudflare":
+        if not success and self.tunnel_backend not in ("cloudflare", "ssh", "ngrok"):
             ngrok_tunnel = NgrokTunnel(self.local_port, self.auth_manager)
             if self._try_tunnel(ngrok_tunnel):
                 success = True
@@ -434,6 +572,7 @@ class TunnelManager:
             return True
 
         if self.lan_ip:
+            self.fallback_to_lan = True
             print("\n[!] Tunnel services failed. Continuing in LAN-only mode.")
             print("=" * 60)
             return True
@@ -444,4 +583,10 @@ class TunnelManager:
 
     def stop(self):
         if self.active_tunnel:
-            self.active_tunnel.stop()
+            try:
+                self.active_tunnel.stop()
+            except Exception:
+                pass
+            self.active_tunnel = None
+        self.public_url = None
+

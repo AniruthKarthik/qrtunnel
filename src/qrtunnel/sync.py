@@ -22,6 +22,7 @@ class SenderSync:
         self.target_url: str = ""
         self.qr_svg: str = ""
         self.status: str = "idle"  # idle, waiting, transferring, completed, stopped
+        self.received_files: List[Dict[str, Any]] = []
 
         # Progress tracking
         self.progress: Dict[str, Any] = {
@@ -51,7 +52,26 @@ class SenderSync:
 
         # Server instance reference
         self.server = None
+        self.servers: List[Any] = []
         self.tunnel_manager = None
+
+    def register_server(self, server: Any):
+        with self._lock:
+            self.server = server
+            if server and server not in self.servers:
+                self.servers.append(server)
+
+    def shutdown_all_servers(self):
+        with self._lock:
+            to_stop = list(self.servers)
+            if self.server and self.server not in to_stop:
+                to_stop.append(self.server)
+        for s in to_stop:
+            try:
+                s.shutdown()
+                s.server_close()
+            except Exception:
+                pass
 
     def initialize(self, port: int, pin: str, lan_ip: Optional[str] = None):
         with self._lock:
@@ -60,12 +80,15 @@ class SenderSync:
             self.lan_ip = lan_ip or ""
             self.is_active = False
             self.status = "idle"
+            self.received_files = []
             self.closed_by_browser.clear()
             self.closed_by_terminal.clear()
             self.shutdown_event.clear()
             self.transfer_started_event.clear()
             self.browser_connected = False
             self.last_heartbeat_time = 0.0
+            if self.server and self.server not in self.servers:
+                self.servers.append(self.server)
         self._start_watchdog()
 
     def set_active_transfer(
@@ -120,6 +143,12 @@ class SenderSync:
 
         self.broadcast_event("progress", prog_data)
 
+    def record_received_file(self, name: str, size: int):
+        with self._lock:
+            entry = {"name": name, "size": size, "time": time.time()}
+            self.received_files.append(entry)
+        self.broadcast_event("received", entry)
+
     def record_heartbeat(self):
         with self._lock:
             self.browser_connected = True
@@ -165,6 +194,7 @@ class SenderSync:
                 "qr_svg": self.qr_svg,
                 "status": self.status,
                 "files": file_info,
+                "received_files": list(self.received_files),
                 "progress": dict(self.progress),
             }
 

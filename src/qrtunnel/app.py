@@ -68,7 +68,9 @@ def launch_server(
         noauth_mode = True
     else:  # LAN
         noauth_mode = True
-    tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok") else None
+    tunnel_backend = (
+        mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
+    )
 
     # ── banner ──
     print("\n" + "=" * 60)
@@ -91,38 +93,48 @@ def launch_server(
 
     # ── LAN / Hotspot check ──
     current_lan_ip = get_lan_ip()
-    if not current_lan_ip and not lan_only:
-        hotspot_helper = HotspotHelper()
-        qr_data = hotspot_helper.get_qr_data()
-        if qr_data:
-            qr_string, ssid, password = qr_data
-            print(f"\n{INFO} 📡 Faster local transfer available")
-            print("Turn on your phone hotspot and scan this QR to connect automatically:")
-            print("=" * 60)
-            try:
-                import qrcode
+    if not current_lan_ip:
+        if lan_only:
+            print(
+                f"\n{INFO} Not in same LAN (no local network detected), "
+                "switching to the other connection..."
+            )
+            mode_name = "Cloudflare"
+            lan_only = False
+            noauth_mode = True
+            tunnel_backend = "cloudflare"
+        else:
+            hotspot_helper = HotspotHelper()
+            qr_data = hotspot_helper.get_qr_data()
+            if qr_data:
+                qr_string, ssid, password = qr_data
+                print(f"\n{INFO} 📡 Faster local transfer available")
+                print("Turn on your phone hotspot and scan this QR to connect automatically:")
+                print("=" * 60)
+                try:
+                    import qrcode
 
-                qr = qrcode.QRCode()
-                qr.add_data(qr_string)
-                qr.make(fit=True)
-                qr.print_ascii(invert=True)
-            except ImportError:
-                print(f"{WRN} qrcode library not installed.")
-            print("=" * 60)
-            print(f"SSID:     {ssid}")
-            print(f"Password: {password}")
-            print("=" * 60)
-            print(f"{INFO} Waiting for connection…")
-            try:
-                for _ in range(15):
-                    time.sleep(2)
-                    new_ip = get_lan_ip()
-                    if new_ip:
-                        print(f"\n{OK} LAN Connection Detected: {new_ip}")
-                        current_lan_ip = new_ip
-                        break
-            except KeyboardInterrupt:
-                print("\nSkipping LAN wait…")
+                    qr = qrcode.QRCode()
+                    qr.add_data(qr_string)
+                    qr.make(fit=True)
+                    qr.print_ascii(invert=True)
+                except ImportError:
+                    print(f"{WRN} qrcode library not installed.")
+                print("=" * 60)
+                print(f"SSID:     {ssid}")
+                print(f"Password: {password}")
+                print("=" * 60)
+                print(f"{INFO} Waiting for connection…")
+                try:
+                    for _ in range(15):
+                        time.sleep(2)
+                        new_ip = get_lan_ip()
+                        if new_ip:
+                            print(f"\n{OK} LAN Connection Detected: {new_ip}")
+                            current_lan_ip = new_ip
+                            break
+                except KeyboardInterrupt:
+                    print("\nSkipping LAN wait…")
 
     # ── tunnel manager ──
     tunnel_manager = TunnelManager(
@@ -153,7 +165,7 @@ def launch_server(
         print(f"\n{OK} HTTP server started on all interfaces (port {Config.LOCAL_PORT})")
 
         sender_sync.initialize(port=Config.LOCAL_PORT, pin=Config.OTP, lan_ip=current_lan_ip)
-        sender_sync.server = server
+        sender_sync.register_server(server)
 
     stopped = False
 
@@ -164,8 +176,12 @@ def launch_server(
         stopped = True
         sender_sync.close_from_terminal()
         tunnel_manager.stop()
-        server.shutdown()
-        server.server_close()
+        sender_sync.shutdown_all_servers()
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:
+            pass
 
     atexit.register(cleanup)
     previous_sigint = signal.getsignal(signal.SIGINT)
@@ -186,6 +202,8 @@ def launch_server(
         sys.exit(1)
 
     # ── QR code and sync ──
+    FileTransferHandler.public_url = tunnel_manager.public_url
+    FileTransferHandler.lan_url = tunnel_manager.lan_url
     target_url = (
         tunnel_manager.lan_url
         if lan_only
@@ -204,7 +222,8 @@ def launch_server(
     )
 
     if not no_browser and not sender_sync.browser_connected:
-        launch_browser_window(f"http://127.0.0.1:{Config.LOCAL_PORT}/sender")
+        page_route = "/sender" if is_send else "/receive"
+        launch_browser_window(f"http://127.0.0.1:{Config.LOCAL_PORT}{page_route}")
 
     generate_qr_code(target_url, no_qr=no_qr)
 
@@ -273,7 +292,7 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  qrtunnel                        # Start Sender Web UI in new browser window (default)
+  qrtunnel                        # Start Web UI in new browser window (default)
   qrtunnel tui                    # Start interactive TUI in terminal
   qrtunnel send photo.jpg         # Share a file on local Wi-Fi (LAN)
   qrtunnel send docs/ -cloudflare # Share directory via Cloudflare tunnel
@@ -299,8 +318,10 @@ Examples:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # TUI command
-    p_tui = subparsers.add_parser("tui", help="Start interactive terminal TUI")
+    # TUI command (only 'qrtunnel tui' triggers the terminal TUI)
+    p_tui = subparsers.add_parser(
+        "tui", help="Start interactive terminal TUI"
+    )
 
     # SEND command
     p_send = subparsers.add_parser("send", help="Share files or directories with others")
@@ -417,17 +438,18 @@ def main():
         server_thread.start()
 
         sender_sync.initialize(port=port, pin=Config.OTP, lan_ip=current_lan_ip)
-        sender_sync.server = server
+        sender_sync.register_server(server)
 
         if not no_browser:
-            launch_browser_window(f"http://127.0.0.1:{port}/sender")
+            launch_browser_window(f"http://127.0.0.1:{port}/")
 
-        sender_url = f"http://127.0.0.1:{port}/sender"
+        main_url = f"http://127.0.0.1:{port}/"
         print("\n" + "=" * 60)
         print(f"  {CLR_B}{CLR_BLD}qrtunnel{CLR_RST}")
         print("=" * 60)
-        print(f"  Sender Web UI : {CLR_C}{sender_url}{CLR_RST}")
+        print(f"  Web UI        : {CLR_C}{main_url}{CLR_RST} (Send & Receive)")
         print(f"  Access Code   : {CLR_Y}{Config.OTP}{CLR_RST}")
+        print(f"  Mode          : {CLR_G}Send & Receive Files{CLR_RST}")
         print(f"  Status        : {CLR_G}Opened in a new browser window{CLR_RST}")
         print("=" * 60)
         if expire_seconds:
@@ -449,8 +471,12 @@ def main():
             sender_sync.close_from_terminal()
             if sender_sync.tunnel_manager:
                 sender_sync.tunnel_manager.stop()
-            server.shutdown()
-            server.server_close()
+            sender_sync.shutdown_all_servers()
+            try:
+                server.shutdown()
+                server.server_close()
+            except Exception:
+                pass
 
         atexit.register(cleanup)
         previous_sigint = signal.getsignal(signal.SIGINT)
@@ -515,9 +541,6 @@ def main():
         sender_sync.initialize(port=port, pin=Config.OTP, lan_ip=current_lan_ip)
         sender_sync.server = server
 
-        if not no_browser:
-            launch_browser_window(f"http://127.0.0.1:{port}/sender")
-
         result = run_tui()
         if result is None:
             sender_sync.close_from_terminal()
@@ -548,7 +571,7 @@ def main():
             chosen_port,
             no_qr=no_qr,
             expire_seconds=expire_seconds,
-            no_browser=no_browser,
+            no_browser=True,
             existing_server=server,
         )
         return
