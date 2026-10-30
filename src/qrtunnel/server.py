@@ -791,7 +791,7 @@ body {
 
 .top-brand { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:18px; }
 .top-brand-icon {
-    display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px;
+    display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
     border-radius:8px; background:#eff6ff; color:#2563eb;
 }
 .top-brand-name { font-size:18px; font-weight:700; color:#0f172a; letter-spacing:-0.3px; }
@@ -816,7 +816,7 @@ body {
 .panel { display:none; }
 .panel.active { display:block; }
 
-.header { text-align:center; margin-bottom:16px; }
+.header { text-align:center; margin-bottom:18px; }
 .badge-icon {
     display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
     border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:10px;
@@ -858,11 +858,29 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .remove-btn:hover { color:#dc2626; }
 .file-summary { font-size:12px; font-weight:600; color:#2563eb; margin-top:8px; text-align:center; }
 
-/* Mode Selection */
-.mode-section { margin-bottom:16px; text-align:left; }
-.mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px; }
+/* Section Header & Inline Port */
+.section-box { margin-bottom:16px; text-align:left; }
+.section-top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
+.port-inline-wrap { display:inline-flex; align-items:center; gap:5px; }
+.port-inline-label { font-size:11px; font-weight:600; color:#64748b; }
+.port-inline-input {
+    width:56px; padding:3px 6px; background:#f8fafc; border:1px solid #cbd5e1;
+    border-radius:6px; font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-weight:600; color:#0f172a; outline:none; text-align:center; transition:border 0.15s;
+}
+.port-inline-input:focus { border-color:#2563eb; background:#ffffff; }
+.port-inline-btn {
+    padding:3px 9px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;
+    border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; text-decoration:none !important;
+    transition:all 0.15s;
+}
+.port-inline-btn:hover { background:#dbeafe; }
+
+/* Mode Selection Grid */
+.mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 .mode-btn {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:9px 12px;
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:9px; padding:9px 12px;
     cursor:pointer; text-align:left; transition:all 0.15s ease; color:#0f172a; position:relative;
     display:block; text-decoration:none !important;
 }
@@ -880,35 +898,22 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
     border:1px solid #bfdbfe; border-radius:8px; padding:8px 12px; line-height:1.4;
 }
 
-/* Port Section */
-.port-section { margin-bottom:16px; text-align:left; }
-.port-bar { display:flex; gap:8px; align-items:center; }
-.port-input {
-    flex:1; padding:8px 12px; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px;
-    font-size:13px; font-family:monospace; font-weight:600; color:#0f172a; outline:none; transition:border 0.15s;
-}
-.port-input:focus { border-color:#2563eb; background:#ffffff; }
-.port-apply-btn {
-    padding:8px 14px; background:#2563eb; color:#ffffff; border:none; border-radius:8px;
-    font-size:12px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s;
-}
-.port-apply-btn:hover { background:#1d4ed8; }
-
-/* QR Card */
+/* Connection / QR Card */
 .qr-card {
-    background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:18px 16px;
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:20px 18px;
     margin-bottom:16px; text-align:center; position:relative;
 }
 .qr-wrapper {
     background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:inline-flex;
     align-items:center; justify-content:center; max-width:200px; max-height:200px;
-    margin:0 auto 10px; box-shadow:0 1px 3px rgba(0,0,0,0.05);
+    margin:0 auto; box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }
 .qr-wrapper svg { width:100%; height:100%; display:block; border-radius:4px; }
+.scan-hint { font-size:12px; color:#64748b; margin-top:8px; margin-bottom:14px; font-weight:400; }
 
 .loading-overlay {
-    position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9);
-    border-radius:12px; display:flex; flex-direction:column;
+    position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.92);
+    border-radius:14px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:8px; z-index:10;
 }
 .spinner {
@@ -918,27 +923,35 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 @keyframes spin { to { transform:rotate(360deg); } }
 .loading-text { font-size:12px; color:#64748b; font-weight:500; }
 
-.pin-badge {
-    margin-top:8px; font-size:13px; font-weight:600; color:#0f172a; background:#ffffff;
-    padding:6px 14px; border-radius:8px; border:1px solid #e2e8f0; display:inline-flex; align-items:center; gap:6px;
+/* Access Code Row */
+.credential-row {
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:9px 14px; margin-bottom:8px; display:flex; align-items:center;
+    justify-content:space-between; gap:12px; text-align:left;
 }
-.pin-val { font-family:monospace; font-size:16px; font-weight:700; color:#2563eb; letter-spacing:2px; }
-.badge-pin {
-    display:inline-block; font-size:12px; font-weight:600; color:#15803d; background:#f0fdf4;
-    border:1px solid #bbf7d0; padding:4px 12px; border-radius:10px; margin-bottom:8px;
+.credential-info { display:flex; flex-direction:column; gap:1px; }
+.credential-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
+.credential-sub { font-size:11px; color:#94a3b8; font-weight:400; }
+.pin-code-badge {
+    background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px;
+    padding:4px 12px; display:inline-flex; align-items:center; justify-content:center;
+}
+.pin-code-digits {
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-size:17px; font-weight:800; color:#0f172a; letter-spacing:3px;
 }
 
-.url-badge, .url-box {
-    margin-top:8px; display:flex; align-items:center; justify-content:space-between; background:#ffffff;
-    border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px 6px 12px; width:100%; box-sizing:border-box; gap:8px;
+/* URL Row */
+.url-box, .url-badge {
+    display:flex; align-items:center; justify-content:space-between; background:#ffffff;
+    border:1px solid #e2e8f0; border-radius:10px; padding:6px 8px 6px 14px; width:100%; box-sizing:border-box; gap:8px;
 }
-.url-text { font-size:12px; font-family:monospace; color:#2563eb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:left; }
+.url-text { font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; color:#2563eb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:left; font-weight:500; }
 .copy-btn {
-    background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:5px 10px;
+    background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:6px 12px;
     font-size:11px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; flex-shrink:0;
 }
 .copy-btn:hover { background:#dbeafe; }
-.scan-hint { font-size:12px; color:#64748b; margin-top:6px; }
 
 /* Progress Container */
 .progress-container, .progress-card {
@@ -946,35 +959,34 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 }
 .progress-status, .progress-meta { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .progress-label { font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px; }
-.progress-pct { font-weight:700; color:#2563eb; font-family:monospace; }
+.progress-pct { font-weight:700; color:#2563eb; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; }
 .progress-bar-bg { width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden; }
 .progress-bar-fill { height:100%; width:0%; background:#2563eb; border-radius:3px; transition:width 0.15s ease; }
 .progress-info { display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:#64748b; font-weight:500; }
 
 /* Incoming Transfers */
-.incoming-section { text-align:left; margin-bottom:16px; margin-top:12px; }
+.incoming-section { text-align:left; margin-bottom:16px; margin-top:14px; }
 .section-header-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-.section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
 .cwd-badge { font-size:11px; color:#64748b; background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 8px; border-radius:6px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .empty-state {
     background:#ffffff; border:1px dashed #cbd5e1; border-radius:10px; padding:16px;
     text-align:center; font-size:12px; color:#64748b; display:flex; align-items:center; justify-content:center; gap:8px;
 }
 
-/* Buttons */
+/* Action Buttons */
 .submit-button {
-    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 20px;
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px 20px;
     background:#2563eb; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600;
     cursor:pointer; text-decoration:none !important; transition:all 0.15s; opacity:0.4; pointer-events:none;
 }
 .submit-button.enabled { opacity:1; pointer-events:auto; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
 .submit-button.enabled:hover { background:#1d4ed8; }
 .stop-button {
-    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:11px 20px;
-    background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:10px;
-    font-size:13px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; margin-top:12px;
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px 20px;
+    background:#ffffff; color:#dc2626; border:1px solid #fecaca; border-radius:10px;
+    font-size:13px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; margin-top:14px;
 }
-.stop-button:hover { background:#fee2e2; }
+.stop-button:hover { background:#fef2f2; border-color:#fca5a5; }
 .footer { text-align:center; margin-top:20px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style>
 </head>
@@ -1032,8 +1044,15 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
         <div class="file-summary" id="file-summary"></div>
       </div>
 
-      <div class="mode-section">
-        <span class="file-section-title">Tunnel Mode</span>
+      <div class="section-box">
+        <div class="section-top-bar">
+          <span class="section-title">Tunnel Mode</span>
+          <div class="port-inline-wrap">
+            <span class="port-inline-label">Port:</span>
+            <input type="number" id="port-input" min="1" max="65535" value="""" + port_val + """" class="port-inline-input" />
+            <button type="button" id="apply-port-btn" class="port-inline-btn">Apply</button>
+          </div>
+        </div>
         <div class="mode-grid">
           <label class="mode-btn selected" id="lbl-lan"><input type="radio" name="mode" value="LAN" checked><span class="mode-btn-title">LAN (Local)</span><span class="mode-btn-desc">Fast same Wi-Fi transfer</span></label>
           <label class="mode-btn" id="lbl-cf"><input type="radio" name="mode" value="Cloudflare"><span class="mode-btn-title">Cloudflare</span><span class="mode-btn-desc">No account required</span></label>
@@ -1041,17 +1060,6 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
           <label class="mode-btn" id="lbl-ngrok"><input type="radio" name="mode" value="Ngrok"><span class="mode-btn-title">Ngrok</span><span class="mode-btn-desc">Secure public link</span></label>
         </div>
         <div id="lan-mode-notice" class="notice-box" style="display:none;">Not in same LAN, switching to the other connection...</div>
-      </div>
-
-      <div class="port-section">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span class="file-section-title">Port</span>
-          <span id="port-status" style="font-size:11px;color:#64748b;">Current: <span id="port-display">""" + port_val + """</span></span>
-        </div>
-        <div class="port-bar">
-          <input type="number" id="port-input" min="1" max="65535" value="""" + port_val + """" class="port-input" />
-          <button type="button" id="apply-port-btn" class="port-apply-btn">Apply</button>
-        </div>
         <div id="port-feedback" style="display:none;font-size:12px;margin-top:6px;border-radius:6px;padding:6px 10px;"></div>
       </div>
 
@@ -1065,12 +1073,20 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
       </div>
       <div class="qr-card">
         <div class="qr-wrapper" id="qr-wrapper"></div>
-        <div class="badge-pin" id="pin-badge-wrap">Access Code: <span class="pin-val" id="pin-val">----</span></div>
-        <div class="url-badge">
+        <p class="scan-hint">Scan with phone camera to download files</p>
+        <div class="credential-row">
+          <div class="credential-info">
+            <span class="credential-label">Access Code</span>
+            <span class="credential-sub">Enter on receiver device</span>
+          </div>
+          <div class="pin-code-badge" id="pin-badge-wrap">
+            <span class="pin-code-digits" id="pin-val">----</span>
+          </div>
+        </div>
+        <div class="url-box url-badge">
           <span class="url-text" id="target-url-text">http://...</span>
           <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
         </div>
-        <p class="scan-hint">Scan with another device to download files</p>
       </div>
 
       <div class="file-preview-area" id="active-files-area">
@@ -1108,8 +1124,15 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
       <p class="subtitle">Select connection mode to show QR code for upload</p>
     </div>
 
-    <div class="mode-section">
-      <span class="file-section-title">Connection Mode</span>
+    <div class="section-box">
+      <div class="section-top-bar">
+        <span class="section-title">Connection Mode</span>
+        <div class="port-inline-wrap">
+          <span class="port-inline-label">Port:</span>
+          <input type="number" id="rec-port-input" min="1" max="65535" value="""" + port_val + """" class="port-inline-input" />
+          <button type="button" id="port-apply-btn" class="port-inline-btn">Apply</button>
+        </div>
+      </div>
       <div class="mode-grid">
         <button type="button" class="mode-btn active" data-mode="LAN"><span class="mode-btn-title">LAN (Local)</span><span class="mode-btn-desc">Fast same Wi-Fi transfer</span></button>
         <button type="button" class="mode-btn" data-mode="Cloudflare"><span class="mode-btn-title">Cloudflare</span><span class="mode-btn-desc">No account required</span></button>
@@ -1119,23 +1142,25 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
       <div id="rec-notice-box" class="notice-box" style="display:none;"></div>
     </div>
 
-    <div class="port-section">
-      <span class="file-section-title">Port</span>
-      <div class="port-bar">
-        <input type="number" id="rec-port-input" min="1" max="65535" value="""" + port_val + """" class="port-input" />
-        <button type="button" id="port-apply-btn" class="port-apply-btn">Apply</button>
-      </div>
-    </div>
-
     <div class="qr-card">
       <div id="rec-loading-spinner" class="loading-overlay" style="display:none;"><div class="spinner"></div><span id="rec-loading-text" class="loading-text">Connecting...</span></div>
       <div class="qr-wrapper" id="rec-qr-wrapper">""" + rec_init_qr_svg + """</div>
-      <div class="badge-pin" id="pin-display">Access Code: """ + pin_str + """</div>
+      <p class="scan-hint">Scan with phone camera to open upload page</p>
+
+      <div class="credential-row">
+        <div class="credential-info">
+          <span class="credential-label">Access Code</span>
+          <span class="credential-sub">Enter on phone after scanning</span>
+        </div>
+        <div class="pin-code-badge">
+          <span class="pin-code-digits" id="pin-display">""" + pin_str + """</span>
+        </div>
+      </div>
+
       <div class="url-box">
         <span class="url-text" id="rec-target-url-text">""" + rec_init_url + """</span>
-        <button type="button" class="copy-btn" id="rec-copy-btn">Copy</button>
+        <button type="button" class="copy-btn" id="rec-copy-btn">Copy Link</button>
       </div>
-      <p class="scan-hint">Scan with phone camera to open upload page</p>
     </div>
 
     <div class="incoming-section">
@@ -1536,7 +1561,7 @@ function updateRecUi(data) {
         if (recPortInput) recPortInput.value = data.port;
     }
     if (data.pin) {
-        pinDisplay.textContent = 'Access Code: ' + data.pin;
+        pinDisplay.textContent = data.pin;
     }
     if (data.target_url) {
         currentRecUrl = data.target_url;
@@ -1642,7 +1667,7 @@ recCopyBtn.addEventListener('click', () => {
     if (navigator.clipboard) {
         navigator.clipboard.writeText(currentRecUrl).then(() => {
             recCopyBtn.textContent = 'Copied!';
-            setTimeout(() => { recCopyBtn.textContent = 'Copy'; }, 2000);
+            setTimeout(() => { recCopyBtn.textContent = 'Copy Link'; }, 1500);
         });
     }
 });
