@@ -64,7 +64,7 @@ def test_dashboard_renders_bauhaus_design_tokens():
 
     # Brand emblem and architectural header with QR GitHub logo
     assert "QRTunnel" in html
-    assert "v3.7.1" in html
+    assert "v3.8.0" in html
     assert "READY // LAN: 192.168.1.100:6969" in html
     assert "https://github.com/AniruthKarthik/qrtunnel" in html
     assert 'class="brand-emblem-box"' in html

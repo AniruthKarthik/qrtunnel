@@ -13,16 +13,18 @@ _Changes not yet released go here._
 
 ---
 
-## [3.7.1] - 2026-10-30
+## [3.8.0] - 2026-10-30
 
 ### Added
 - Complete Bauhaus-inspired UI/UX redesign across all host and client interfaces:
   - Bauhaus Design System (`src/qrtunnel/ui/theme.py`) featuring authentic color palette (warm ivory `#F8F6F0`, deep charcoal ink `#111215`, cadmium red `#D22626`, cobalt blue `#164785`, chrome ochre `#E5A110`).
-  - Unified desktop host dashboard (`src/qrtunnel/ui/dashboard.py`) with Send, Receive, History, and Settings tabs.
+  - Unified desktop host dashboard (`src/qrtunnel/ui/dashboard.py`) with streamlined 3-tab navigation (Send, Receive, History).
+  - Interactive vector QR logo pointing to the creator's GitHub repository (`https://github.com/AniruthKarthik/qrtunnel`).
   - Asymmetric desktop workspace grid with prominent QR monolith and Bauhaus corner registration brackets.
   - Dedicated 4-box monospaced Access Code card for high visibility.
   - Real-time telemetry dashboard with live progress bar, speed readout, transferred/total bytes, and ETA estimation.
-  - Interactive transfer history panel powered by `/api/history` with filtering and audit logging.
+  - Interactive transfer history panel powered by `/api/history` with filtering, audit logging, and one-click history clearing (`POST /api/history/clear`).
+  - Direct inline port selector and synchronization across Send and Receive workflows.
   - Redesigned mobile client download page (`src/qrtunnel/ui/download.py`) with itemized selection and streaming zip bundling.
   - Redesigned mobile client upload page (`src/qrtunnel/ui/upload.py`) with live speed tracking and multi-file dropzone.
   - Redesigned security check page (`src/qrtunnel/ui/login.py`) with geometric lock iconography and 4-digit code entry.

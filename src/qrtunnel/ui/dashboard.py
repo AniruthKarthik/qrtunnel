@@ -1,5 +1,6 @@
 """Bauhaus Host Dashboard - Complete unified Send, Receive, History, and Settings interface."""
 
+from ..constants import __version__
 from .theme import BAUHAUS_CSS, ICONS
 
 
@@ -1009,7 +1010,7 @@ body {
                 """ + ICONS['brand_emblem'] + """
             </a>
             <span class="brand-name">QRTunnel</span>
-            <span class="version-tag mono">v3.7.1</span>
+            <span class="version-tag mono">v""" + __version__ + """</span>
         </div>
         <div class="system-status mono">
             <span class="status-pip"></span>
