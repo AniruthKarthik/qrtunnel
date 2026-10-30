@@ -345,6 +345,8 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 <title>qrtunnel - Security Check</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+a, a:hover, a:visited, a:focus, a:active {{ text-decoration:none !important; color:inherit; outline:none; }}
+button {{ font-family:inherit; outline:none; }}
 body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
        align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
@@ -682,6 +684,8 @@ button:active {{ transform:scale(0.99); }}
 <title>qrtunnel - Upload Complete</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+a, a:hover, a:visited, a:focus, a:active {{ text-decoration:none !important; color:inherit; outline:none; }}
+button {{ font-family:inherit; outline:none; }}
 body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
        align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }}
@@ -771,6 +775,8 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-
 <title>qrtunnel - Sender & Receiver</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+a, a:hover, a:visited, a:focus, a:active { text-decoration:none !important; color:inherit; outline:none; }
+button { font-family:inherit; outline:none; }
 body {
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
@@ -798,11 +804,13 @@ body {
 .tab-btn {
     flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
     padding:9px 12px; border:none; border-radius:8px; font-size:13px; font-weight:600;
-    color:#64748b; background:transparent; cursor:pointer; transition:all 0.15s ease;
+    color:#64748b; background:transparent; cursor:pointer; text-decoration:none !important;
+    transition:all 0.15s ease; outline:none; user-select:none;
 }
-.tab-btn:hover { color:#0f172a; }
+.tab-btn:hover { color:#0f172a; text-decoration:none !important; }
 .tab-btn.active {
     color:#0f172a; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-weight:700;
+    text-decoration:none !important;
 }
 
 .panel { display:none; }
@@ -836,7 +844,7 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .file-section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
 .file-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
 .file-count-badge { font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }
-.clear-btn { background:none; border:none; color:#dc2626; font-size:12px; font-weight:500; cursor:pointer; padding:2px 6px; border-radius:4px; }
+.clear-btn { background:none; border:none; color:#dc2626; font-size:12px; font-weight:500; cursor:pointer; padding:2px 6px; border-radius:4px; text-decoration:none !important; }
 .clear-btn:hover { background:#fef2f2; }
 .file-list { list-style:none; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; background:#ffffff; max-height:160px; overflow-y:auto; }
 .file-list li { border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; padding:9px 12px; min-height:42px; gap:8px; font-size:13px; }
@@ -846,7 +854,7 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .file-name { font-size:13px; font-weight:500; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .file-meta { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .file-size { font-size:11px; color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:6px; font-weight:500; white-space:nowrap; }
-.remove-btn { background:none; border:none; color:#94a3b8; font-size:16px; cursor:pointer; padding:0 4px; line-height:1; }
+.remove-btn { background:none; border:none; color:#94a3b8; font-size:16px; cursor:pointer; padding:0 4px; line-height:1; text-decoration:none !important; }
 .remove-btn:hover { color:#dc2626; }
 .file-summary { font-size:12px; font-weight:600; color:#2563eb; margin-top:8px; text-align:center; }
 
@@ -855,7 +863,8 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px; }
 .mode-btn {
     background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:9px 12px;
-    cursor:pointer; text-align:left; transition:all 0.15s ease; color:#0f172a; position:relative; display:block;
+    cursor:pointer; text-align:left; transition:all 0.15s ease; color:#0f172a; position:relative;
+    display:block; text-decoration:none !important;
 }
 .mode-btn:hover { background:#f8fafc; border-color:#cbd5e1; }
 .mode-btn.active, .mode-btn.selected {
@@ -881,7 +890,7 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .port-input:focus { border-color:#2563eb; background:#ffffff; }
 .port-apply-btn {
     padding:8px 14px; background:#2563eb; color:#ffffff; border:none; border-radius:8px;
-    font-size:12px; font-weight:600; cursor:pointer; transition:all 0.15s;
+    font-size:12px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s;
 }
 .port-apply-btn:hover { background:#1d4ed8; }
 
@@ -926,7 +935,7 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .url-text { font-size:12px; font-family:monospace; color:#2563eb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:left; }
 .copy-btn {
     background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:5px 10px;
-    font-size:11px; font-weight:600; cursor:pointer; transition:all 0.15s; flex-shrink:0;
+    font-size:11px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; flex-shrink:0;
 }
 .copy-btn:hover { background:#dbeafe; }
 .scan-hint { font-size:12px; color:#64748b; margin-top:6px; }
@@ -956,14 +965,14 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .submit-button {
     display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 20px;
     background:#2563eb; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600;
-    cursor:pointer; transition:all 0.15s; opacity:0.4; pointer-events:none;
+    cursor:pointer; text-decoration:none !important; transition:all 0.15s; opacity:0.4; pointer-events:none;
 }
 .submit-button.enabled { opacity:1; pointer-events:auto; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
 .submit-button.enabled:hover { background:#1d4ed8; }
 .stop-button {
     display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:11px 20px;
     background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:10px;
-    font-size:13px; font-weight:600; cursor:pointer; transition:all 0.15s; margin-top:12px;
+    font-size:13px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; margin-top:12px;
 }
 .stop-button:hover { background:#fee2e2; }
 .footer { text-align:center; margin-top:20px; font-size:12px; color:#94a3b8; font-weight:500; }
@@ -2296,6 +2305,8 @@ evtSource.addEventListener('close', () => {
 <title>qrtunnel - File Upload</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+a, a:hover, a:visited, a:focus, a:active { text-decoration:none !important; color:inherit; outline:none; }
+button { font-family:inherit; outline:none; }
 body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
        align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
@@ -2550,6 +2561,8 @@ window.ALT_CONNECTION_URL = "__ALT_URL__";
 <title>qrtunnel - File Download</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+a, a:hover, a:visited, a:focus, a:active { text-decoration:none !important; color:inherit; outline:none; }
+button { font-family:inherit; outline:none; }
 body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
        background:#f8fafc; color:#0f172a; min-height:100vh; display:flex; flex-direction:column;
        align-items:center; justify-content:center; padding:20px 16px; -webkit-font-smoothing:antialiased; }
