@@ -62,10 +62,12 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert ".mono {" in html
     assert "JetBrains Mono" in html
 
-    # Brand emblem and architectural header
+    # Brand emblem and architectural header with QR GitHub logo
     assert "QRTunnel" in html
     assert "v3.7.1" in html
     assert "READY // LAN: 192.168.1.100:6969" in html
+    assert "https://github.com/AniruthKarthik/qrtunnel" in html
+    assert 'class="brand-emblem-box"' in html
 
     # Segmented navigation tabs
     assert 'id="tab-btn-send"' in html

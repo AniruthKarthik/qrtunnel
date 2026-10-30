@@ -81,7 +81,7 @@ Typography is the backbone of the Bauhaus visual hierarchy. QRTunnel employs a d
 
 ### 4.1 Master Frame & Navigation
 The desktop host UI is framed in a solid structural container (`max-width: 920px`) with sharp corners, featuring:
-- **Brand Top Bar:** Bauhaus geometric emblem (intersecting cadmium red square, cobalt blue circle, and chrome yellow triangle), uppercase logotype `QRTUNNEL`, version tag `v3.7.1`, and a live geometric status pip (`ONLINE // LAN: 192.168.1.10:6969`).
+- **Brand Top Bar:** Interactive vector QR emblem (encoding and linking directly to the project GitHub repository `https://github.com/AniruthKarthik/qrtunnel`), uppercase logotype `QRTUNNEL`, version tag `v3.7.1`, and a live geometric status pip (`ONLINE // LAN: 192.168.1.10:6969`).
 - **Architectural Segmented Navigation:**
   - `[ ↗ SEND FILES ]`: Host-to-client dispatch workflow with inline port controls.
   - `[ ↘ RECEIVE FILES ]`: Client-to-host ingest workflow with inline port controls.

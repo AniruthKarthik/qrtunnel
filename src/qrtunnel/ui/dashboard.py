@@ -65,12 +65,29 @@ body {
 }
 
 .brand-emblem-box {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 32px;
     height: 32px;
-    background: var(--bh-ink);
+    background: #FFFFFF;
+    border: var(--bh-border-width) solid var(--bh-border);
+    padding: 2px;
+    box-sizing: border-box;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.12s ease, transform 0.12s ease;
+}
+
+.brand-emblem-box:hover {
+    border-color: var(--bh-red);
+    transform: scale(1.06);
+}
+
+.brand-emblem-box svg {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 .brand-name {
@@ -988,9 +1005,9 @@ body {
     <!-- Top Bar -->
     <div class="top-bar">
         <div class="brand-unit">
-            <div class="brand-emblem-box">
+            <a href="https://github.com/AniruthKarthik/qrtunnel" target="_blank" rel="noopener noreferrer" class="brand-emblem-box" title="QRTunnel on GitHub (AniruthKarthik/qrtunnel)">
                 """ + ICONS['brand_emblem'] + """
-            </div>
+            </a>
             <span class="brand-name">QRTunnel</span>
             <span class="version-tag mono">v3.7.1</span>
         </div>
