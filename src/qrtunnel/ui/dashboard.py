@@ -35,16 +35,21 @@ body {
     justify-content: flex-start;
     padding: 24px 16px;
     background-color: var(--bh-bg);
+    min-height: 100vh;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 /* Master Layout Frame */
 .app-frame {
     background: var(--bh-surface);
     border: var(--bh-border-heavy) solid var(--bh-border);
-    max-width: 920px;
+    max-width: 960px;
     width: 100%;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
 }
 
 /* Top Bauhaus Header Bar */
@@ -55,8 +60,9 @@ body {
     padding: 14px 20px;
     border-bottom: var(--bh-border-heavy) solid var(--bh-border);
     background: var(--bh-surface);
-    flex-wrap: wrap;
     gap: 12px;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .brand-unit {
@@ -126,6 +132,8 @@ body {
     display: flex;
     border-bottom: var(--bh-border-heavy) solid var(--bh-border);
     background: var(--bh-surface-alt);
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .nav-tab {
@@ -170,6 +178,8 @@ body {
 .main-view-panel {
     display: none;
     padding: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .main-view-panel.active {
     display: block;
@@ -178,24 +188,30 @@ body {
 /* 2-Column Asymmetric Grid Layout for Send & Receive */
 .workspace-grid {
     display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    width: 100%;
     min-height: 520px;
+    align-items: stretch;
+    box-sizing: border-box;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 820px) {
     .workspace-grid {
         grid-template-columns: 1fr;
     }
 }
 
 .pane-primary {
-    padding: 24px 22px;
+    padding: 24px 24px;
     border-right: var(--bh-border-heavy) solid var(--bh-border);
     display: flex;
     flex-direction: column;
+    min-width: 0;
+    box-sizing: border-box;
+    background: var(--bh-surface);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 820px) {
     .pane-primary {
         border-right: none;
         border-bottom: var(--bh-border-heavy) solid var(--bh-border);
@@ -203,12 +219,15 @@ body {
 }
 
 .pane-stage {
-    padding: 24px 22px;
+    padding: 24px 20px;
     background: var(--bh-surface-alt);
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
+    min-width: 0;
+    box-sizing: border-box;
+    gap: 14px;
 }
 
 /* Typography & Section Titles */
@@ -361,6 +380,8 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--bh-ink);
+    min-width: 0;
+    display: block;
 }
 
 .manifest-meta {
@@ -572,6 +593,12 @@ body {
 }
 
 /* Destructive Stop / Close Button */
+#active-actions {
+    width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+}
+
 .stop-button {
     display: flex;
     align-items: center;
@@ -588,7 +615,8 @@ body {
     text-transform: uppercase;
     cursor: pointer;
     transition: all 0.12s ease;
-    margin-top: 14px;
+    margin: 0;
+    box-sizing: border-box;
 }
 
 .stop-button:hover {
@@ -603,7 +631,9 @@ body {
     padding: 18px 16px;
     text-align: center;
     position: relative;
-    margin-bottom: 16px;
+    margin: 0;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .qr-monolith {
@@ -614,7 +644,8 @@ body {
     background: #FFFFFF;
     border: 2px solid var(--bh-ink);
     padding: 12px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
 }
 
 /* Bauhaus Corner Registration Marks */
@@ -642,8 +673,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 180px;
-    height: 180px;
+    width: 176px;
+    height: 176px;
 }
 
 .qr-wrapper svg {
@@ -653,11 +684,11 @@ body {
 }
 
 .scan-prompt {
-    font-size: 11.5px;
-    font-weight: 600;
+    font-size: 11px;
+    font-weight: 700;
     color: var(--bh-ink-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.06em;
     margin-bottom: 14px;
 }
 
@@ -668,6 +699,8 @@ body {
     padding: 12px 14px;
     margin-bottom: 12px;
     text-align: center;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .access-code-header {
@@ -697,20 +730,22 @@ body {
 .digit-boxes {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 8px;
 }
 
 .digit-box {
     width: 44px;
-    height: 52px;
+    height: 48px;
     background: var(--bh-surface);
     border: 2px solid var(--bh-ink);
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 800;
     color: var(--bh-ink);
     display: flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
 }
 
 .pin-hidden {
@@ -725,6 +760,8 @@ body {
     border: 1px solid var(--bh-border);
     padding: 4px 4px 4px 10px;
     gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .url-strip svg {
@@ -733,7 +770,7 @@ body {
 }
 
 .url-text {
-    font-size: 11.5px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--bh-blue);
     overflow: hidden;
@@ -741,6 +778,7 @@ body {
     white-space: nowrap;
     text-align: left;
     flex: 1;
+    min-width: 0;
 }
 
 .copy-btn {
@@ -748,7 +786,7 @@ body {
     color: #FFFFFF;
     border: none;
     padding: 6px 12px;
-    font-size: 11px;
+    font-size: 10.5px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -793,6 +831,9 @@ body {
     border: var(--bh-border-heavy) solid var(--bh-border);
     padding: 14px 16px;
     text-align: left;
+    margin: 0;
+    box-sizing: border-box;
+    width: 100%;
 }
 
 .telemetry-status-row {
@@ -800,9 +841,11 @@ body {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 700;
     color: var(--bh-ink);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .progress-track {
@@ -826,7 +869,57 @@ body {
     gap: 8px;
     background: var(--bh-surface-alt);
     border: 1px solid var(--bh-border-subtle);
-    padding: 10px;
+    padding: 10px 12px;
+    box-sizing: border-box;
+}
+
+/* Structured Technical Meta Box */
+.meta-panel {
+    border: var(--bh-border-width) solid var(--bh-border);
+    background: var(--bh-surface);
+    margin-top: 16px;
+    box-sizing: border-box;
+}
+
+.meta-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--bh-surface-alt);
+    border-bottom: 1px solid var(--bh-border);
+}
+
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--bh-border-subtle);
+}
+
+.meta-item {
+    background: var(--bh-surface);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+.meta-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--bh-ink-muted);
+    margin-bottom: 2px;
+}
+
+.meta-val {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--bh-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tele-cell {
@@ -1119,6 +1212,30 @@ body {
                     </div>
                     <div id="lan-switch-notice" class="notice-box" style="display:none;margin-top:10px;">
                         Not in same LAN, switching to the other connection...
+                    </div>
+                    <div class="meta-panel" id="active-session-meta">
+                        <div class="meta-panel-header">
+                            <span class="micro-label">Transfer Session</span>
+                            <span class="file-count-chip mono" id="active-session-state">ACTIVE</span>
+                        </div>
+                        <div class="meta-grid mono">
+                            <div class="meta-item">
+                                <span class="meta-label">Tunnel Mode</span>
+                                <span class="meta-val" id="active-meta-mode">LAN</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Port</span>
+                                <span class="meta-val" id="active-meta-port">""" + port_val + """</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Security</span>
+                                <span class="meta-val">4-Digit PIN</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Directory</span>
+                                <span class="meta-val" title='""" + cwd_name + """'>📁 """ + cwd_name + """</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1656,6 +1773,15 @@ function switchToActiveView(data) {
         lanSwitchNotice.style.display = 'block';
     } else if (lanSwitchNotice) {
         lanSwitchNotice.style.display = 'none';
+    }
+
+    if (data.mode) {
+        const metaMode = document.getElementById('active-meta-mode');
+        if (metaMode) metaMode.textContent = data.mode;
+    }
+    if (data.port) {
+        const metaPort = document.getElementById('active-meta-port');
+        if (metaPort) metaPort.textContent = data.port;
     }
 
     activeFileList.innerHTML = '';
