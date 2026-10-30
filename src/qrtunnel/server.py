@@ -10,6 +10,7 @@ import platform
 import queue
 import re
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -181,8 +182,52 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
             pass
         return sock, addr
 
+    def handle_error(self, request, client_address):
+        """Suppress benign client disconnect tracebacks (BrokenPipe, ConnectionReset)."""
+        exc_type, exc_val, _ = sys.exc_info()
+        if exc_type in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+        if isinstance(exc_val, (socket.error, OSError)) and getattr(exc_val, "errno", None) in (32, 104, 107):
+            return
+        super().handle_error(request, client_address)
+
 
 class FileTransferHandler(BaseHTTPRequestHandler):
+    def handle(self):
+        """Handle multiple requests per connection gracefully, catching socket disconnects."""
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        except OSError as e:
+            if getattr(e, "errno", None) in (32, 104, 107):
+                self.close_connection = True
+            else:
+                raise
+        except Exception:
+            self.close_connection = True
+
+    def finish(self):
+        """Safely release request socket resources without raising secondary broken pipe errors."""
+        try:
+            if not self.wfile.closed:
+                try:
+                    self.wfile.flush()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            super().finish()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
+        except OSError as e:
+            if getattr(e, "errno", None) in (32, 104, 107):
+                pass
+            else:
+                raise
+        except Exception:
+            pass
     protocol_version = "HTTP/1.1"
     wbufsize = 65536
     file_paths = None
@@ -255,14 +300,23 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 self.send_header(
                     "Set-Cookie", f"session={session_token}; Path=/; HttpOnly; Max-Age=86400"
                 )
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "keep-alive")
                 self.end_headers()
                 print(f"{OK} Auth success from {self.client_address[0]}")
             else:
                 print(f"{WRN} Failed auth attempt from {self.client_address[0]}")
                 self.send_login_page(error="Incorrect 4-digit code")
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
         except Exception as e:
             print(f"{ERR} Auth error: {e}")
-            self.send_error(500, "Internal Server Error")
+            if not self.wfile.closed:
+                try:
+                    self.send_error(500, "Internal Server Error")
+                except Exception:
+                    pass
+            self.close_connection = True
 
     @staticmethod
     def get_receiver_session_script():
@@ -270,14 +324,19 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def send_login_page(self, error=None):
         html = render_login_page(error=error)
+        encoded = html.encode("utf-8")
         self.send_response(200 if not error else 403)
         self.send_header("Content-type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+        self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+        try:
+            self.wfile.write(encoded)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     # ── client network detection ──
     def get_real_client_ip(self):
@@ -525,21 +584,34 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 )
 
             self.send_response(200)
-            self.send_header("Content-type", "text/html")
+            self.send_header("Content-type", "text/html; charset=utf-8")
             success_html = self.get_upload_success_page(saved_files)
             encoded_success = success_html.encode("utf-8")
             self.send_header("Content-Length", str(len(encoded_success)))
             self.send_header("Connection", "close")
             self._send_auth_cookie_if_needed()
             self.end_headers()
-            self.wfile.write(encoded_success)
-            self.wfile.flush()
+            try:
+                self.wfile.write(encoded_success)
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             self.close_connection = True
+        except (BrokenPipeError, ConnectionResetError):
+            if target:
+                target.cleanup()
+            self.close_connection = True
+            print(f"\n{ERR} Client disconnected during upload")
         except Exception as e:
             if target:
                 target.cleanup()
             print(f"{ERR} Error during upload: {e}")
-            self.send_error(500, "Internal Server Error")
+            if not self.wfile.closed:
+                try:
+                    self.send_error(500, "Internal Server Error")
+                except Exception:
+                    pass
+            self.close_connection = True
 
     def get_upload_success_page(self, files):
         return render_upload_success_page(files)
@@ -826,6 +898,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
+            self.close_connection = True
             sender_sync.unsubscribe(q)
 
     def handle_sender_heartbeat(self):
@@ -903,6 +976,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
         finally:
+            self.close_connection = True
             sender_sync.unsubscribe(q)
 
     def handle_sender_port(self):
@@ -1181,28 +1255,38 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def send_upload_page(self):
         html = render_upload_page()
+        encoded = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+        self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self._send_auth_cookie_if_needed()
         self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+        try:
+            self.wfile.write(encoded)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     # ── download page ──
     def send_download_page(self):
         html = render_download_page(self.file_paths)
+        encoded = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+        self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         self._send_auth_cookie_if_needed()
         self.end_headers()
-        self.wfile.write(html.encode("utf-8"))
+        try:
+            self.wfile.write(encoded)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     # ── range / serve ──
     def parse_range_header(self, file_size):
