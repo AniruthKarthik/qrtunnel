@@ -414,6 +414,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             if parsed_path.path == "/api/receiver/mode":
                 self.handle_receiver_mode()
                 return
+            if parsed_path.path == "/api/history/clear":
+                self.handle_history_clear()
+                return
 
         if self.path == "/login":
             self.handle_login()
@@ -616,6 +619,17 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         from .history import load_history
         entries = load_history()
         resp = json.dumps({"history": entries}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.send_header("Content-Length", str(len(resp)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(resp)
+
+    def handle_history_clear(self):
+        from .history import clear_history
+        clear_history()
+        resp = json.dumps({"success": True}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.send_header("Content-Length", str(len(resp)))

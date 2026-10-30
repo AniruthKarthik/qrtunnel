@@ -71,7 +71,15 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert 'id="tab-btn-send"' in html
     assert 'id="tab-btn-receive"' in html
     assert 'id="tab-btn-history"' in html
-    assert 'id="tab-btn-settings"' in html
+    assert 'id="tab-btn-settings"' not in html
+
+    # Port input defaults rendered cleanly
+    assert '<input type="number" id="port-input" min="1" max="65535" value="6969"' in html
+    assert '<input type="number" id="rec-port-input" min="1" max="65535" value="6969"' in html
+
+    # Minimal clean footer without decorative branding
+    assert "BAUHAUS DESIGN SYSTEM" not in html
+    assert 'id="footer-port-display"' in html
 
     # 4-Box Access Code Digits
     assert 'id="send-d-0"' in html
@@ -91,10 +99,11 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert 'id="progress-stats"' in html
     assert 'id="progress-eta"' in html
 
-    # History & Settings Panels
+    # History Panel & Clear Action (Settings removed)
     assert 'id="panel-history"' in html
-    assert 'id="panel-settings"' in html
+    assert 'id="panel-settings"' not in html
     assert 'id="history-tbody"' in html
+    assert 'clearHistoryLogs' in html
 
 
 def test_api_history_endpoint(tmp_path):
@@ -112,6 +121,23 @@ def test_api_history_endpoint(tmp_path):
     assert len(data["history"]) >= 2
     assert data["history"][0]["filename"] == "document_a.pdf"
     assert data["history"][1]["filename"] == "archive_b.zip"
+
+
+def test_api_history_clear_endpoint(tmp_path):
+    """Verify local clients can clear transfer history over /api/history/clear."""
+    Config.CONFIG_DIR = tmp_path
+    log_transfer("temp_file.bin", 1024, "127.0.0.1", "send")
+
+    handler = create_mock_handler(path="/api/history/clear", method="POST")
+    handler.do_POST()
+
+    handler.send_response.assert_called_with(200)
+    data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+    assert data.get("success") is True
+
+    from qrtunnel.history import load_history
+
+    assert len(load_history()) == 0
 
 
 def test_login_page_bauhaus_design():

@@ -899,6 +899,25 @@ body {
     color: #FFFFFF;
 }
 
+.clear-history-btn {
+    background: transparent;
+    border: 1px solid var(--bh-border);
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    color: var(--bh-red);
+    margin-left: 8px;
+    transition: background 0.1s ease, color 0.1s ease;
+}
+
+.clear-history-btn:hover {
+    background: var(--bh-red);
+    color: #FFFFFF;
+}
+
 .history-table {
     width: 100%;
     border-collapse: collapse;
@@ -948,58 +967,6 @@ body {
     color: var(--bh-green);
 }
 
-/* ── SETTINGS VIEW ── */
-.settings-container {
-    padding: 24px;
-    max-width: 640px;
-}
-
-.settings-group {
-    background: var(--bh-surface);
-    border: var(--bh-border-width) solid var(--bh-border);
-    margin-bottom: 20px;
-}
-
-.settings-group-header {
-    padding: 10px 14px;
-    background: var(--bh-surface-alt);
-    border-bottom: 1px solid var(--bh-border);
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--bh-ink);
-}
-
-.settings-row {
-    padding: 14px;
-    border-bottom: 1px solid var(--bh-border-subtle);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.settings-row:last-child {
-    border-bottom: none;
-}
-
-.settings-info {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.settings-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--bh-ink);
-}
-
-.settings-desc {
-    font-size: 11.5px;
-    color: var(--bh-ink-muted);
-}
-
 /* Bottom App Footer */
 .app-footer {
     padding: 10px 20px;
@@ -1047,10 +1014,6 @@ body {
             """ + ICONS['history'] + """
             <span>History</span>
         </button>
-        <button type="button" class="nav-tab" id="tab-btn-settings" onclick="switchMainTab('settings');">
-            """ + ICONS['settings'] + """
-            <span>Settings</span>
-        </button>
     </div>
 
     <!-- ==================== VIEW 1: SEND ==================== -->
@@ -1092,7 +1055,7 @@ body {
                             <span class="micro-label">Tunnel Mode</span>
                             <div class="port-input-wrap">
                                 <span class="port-label">Port:</span>
-                                <input type="number" id="port-input" min="1" max="65535" value="""" + port_val + """" class="port-field mono" />
+                                <input type="number" id="port-input" min="1" max="65535" value="__PORT_VAL__" class="port-field mono" />
                                 <button type="button" id="apply-port-btn" class="port-btn">Set</button>
                             </div>
                         </div>
@@ -1229,7 +1192,7 @@ body {
                         <span class="micro-label">Connection Mode</span>
                         <div class="port-input-wrap">
                             <span class="port-label">Port:</span>
-                            <input type="number" id="rec-port-input" min="1" max="65535" value="""" + port_val + """" class="port-field mono" />
+                            <input type="number" id="rec-port-input" min="1" max="65535" value="__PORT_VAL__" class="port-field mono" />
                             <button type="button" id="port-apply-btn" class="port-btn">Set</button>
                         </div>
                     </div>
@@ -1336,6 +1299,7 @@ body {
                     <button type="button" class="filter-btn active" data-filter="all" onclick="filterHistory('all')">All</button>
                     <button type="button" class="filter-btn" data-filter="send" onclick="filterHistory('send')">Sent</button>
                     <button type="button" class="filter-btn" data-filter="receive" onclick="filterHistory('receive')">Received</button>
+                    <button type="button" class="clear-history-btn" onclick="clearHistoryLogs()">Clear</button>
                 </div>
             </div>
 
@@ -1356,81 +1320,31 @@ body {
         </div>
     </div>
 
-    <!-- ==================== VIEW 4: SETTINGS ==================== -->
-    <div id="panel-settings" class="main-view-panel">
-        <div class="settings-container">
-            <div class="pane-header">
-                <div class="micro-label" style="margin-bottom: 4px;">Configuration // Technical Parameters</div>
-                <h1 style="font-size: 20px; font-weight: 800; text-transform: uppercase;">Settings</h1>
-            </div>
-
-            <div class="settings-group">
-                <div class="settings-group-header">Network & Port Configuration</div>
-                <div class="settings-row">
-                    <div class="settings-info">
-                        <span class="settings-title">Active Local Port</span>
-                        <span class="settings-desc">TCP listening port bound by QRTunnel server</span>
-                    </div>
-                    <span class="mono" style="font-weight:700;font-size:13px;" id="settings-port-display">""" + port_val + """</span>
-                </div>
-                <div class="settings-row">
-                    <div class="settings-info">
-                        <span class="settings-title">Local Subnet IP</span>
-                        <span class="settings-desc">Detected IP address on local network</span>
-                    </div>
-                    <span class="mono" style="font-weight:700;font-size:13px;">""" + (current_lan_ip if has_lan else "Localhost only") + """</span>
-                </div>
-            </div>
-
-            <div class="settings-group">
-                <div class="settings-group-header">Storage & Workspace</div>
-                <div class="settings-row">
-                    <div class="settings-info">
-                        <span class="settings-title">Incoming Save Directory</span>
-                        <span class="settings-desc">Files received over QRTunnel are placed in this folder</span>
-                    </div>
-                    <span class="mono" style="font-weight:700;font-size:12px;">📁 """ + cwd_name + """</span>
-                </div>
-            </div>
-
-            <div class="settings-group">
-                <div class="settings-group-header">Security & Verification</div>
-                <div class="settings-row">
-                    <div class="settings-info">
-                        <span class="settings-title">Access Code Protection</span>
-                        <span class="settings-desc">Requires 4-digit code entry before any client access</span>
-                    </div>
-                    <span class="dir-badge send mono">ENABLED</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Bottom App Footer -->
     <div class="app-footer mono">
         <span>QRTUNNEL // ARCHITECTURAL HIGH-PERFORMANCE FILE TUNNEL</span>
-        <span>BAUHAUS DESIGN SYSTEM</span>
+        <span id="footer-port-display">PORT __PORT_VAL__</span>
     </div>
 </div>
 
 <script>
 let activeTab = "send";
 function switchMainTab(tab) {
+    if (tab !== 'send' && tab !== 'receive' && tab !== 'history') {
+        tab = 'send';
+    }
     activeTab = tab;
     const isSend = tab === 'send';
     const isRec = tab === 'receive';
     const isHist = tab === 'history';
-    const isSet = tab === 'settings';
 
     document.getElementById('tab-btn-send').classList.toggle('active', isSend);
     document.getElementById('tab-btn-receive').classList.toggle('active', isRec);
     document.getElementById('tab-btn-history').classList.toggle('active', isHist);
-    document.getElementById('tab-btn-settings').classList.toggle('active', isSet);
 
     document.getElementById('panel-send').classList.toggle('active', isSend);
     document.getElementById('panel-receive').classList.toggle('active', isRec);
     document.getElementById('panel-history').classList.toggle('active', isHist);
-    document.getElementById('panel-settings').classList.toggle('active', isSet);
 
     window.location.hash = '#' + tab;
 
@@ -1612,8 +1526,9 @@ if (applyPortBtn && portInput) {
                 portFeedback.style.color = 'var(--bh-green)';
                 portFeedback.textContent = `✓ Port set to ${data.port}`;
                 if (recPortInput) recPortInput.value = data.port;
-                const setPortDisp = document.getElementById('settings-port-display');
-                if (setPortDisp) setPortDisp.textContent = data.port;
+                if (portInput) portInput.value = data.port;
+                const footerPort = document.getElementById('footer-port-display');
+                if (footerPort) footerPort.textContent = 'PORT ' + data.port;
                 currentRecPort = data.port;
                 if (typeof initialState !== 'undefined' && initialState) initialState.port = data.port;
                 setTimeout(() => { portFeedback.style.display = 'none'; }, 3500);
@@ -1799,6 +1714,9 @@ function updateRecUi(data) {
     if (data.port) {
         currentRecPort = data.port;
         if (recPortInput) recPortInput.value = data.port;
+        if (portInput) portInput.value = data.port;
+        const footerPort = document.getElementById('footer-port-display');
+        if (footerPort) footerPort.textContent = 'PORT ' + data.port;
     }
     if (data.pin) {
         pinDisplay.textContent = data.pin;
@@ -2000,8 +1918,27 @@ function filterHistory(filter) {
     }
 }
 
+function clearHistoryLogs() {
+    if (!confirm('Clear all transfer history logs?')) return;
+    fetch('/api/history/clear', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                currentHistoryData = [];
+                renderHistoryRows([]);
+            }
+        })
+        .catch(() => {
+            alert('Failed to clear history logs.');
+        });
+}
+
 // Initialize with current server state
 const initialState = __INITIAL_STATE__;
+const initialPort = (initialState && initialState.port) || "__PORT_VAL__";
+if (portInput && !portInput.value) portInput.value = initialPort;
+if (recPortInput && !recPortInput.value) recPortInput.value = initialPort;
+
 if (initialState) {
     if (initialState.is_active && initialState.is_send !== false) {
         switchToActiveView(initialState);
@@ -2019,8 +1956,6 @@ if (hash === '#receive' || requestedTab === 'receive') {
     switchMainTab('receive');
 } else if (hash === '#history') {
     switchMainTab('history');
-} else if (hash === '#settings') {
-    switchMainTab('settings');
 } else {
     switchMainTab('send');
 }
@@ -2096,6 +2031,11 @@ evtSource.addEventListener('close', () => {
 });
 </script>
 </body>
-</html>""".replace("__INITIAL_STATE__", initial_state_json).replace("__DEFAULT_TAB__", default_tab)
+</html>"""
 
+    html = (
+        html.replace("__INITIAL_STATE__", initial_state_json)
+        .replace("__DEFAULT_TAB__", default_tab)
+        .replace("__PORT_VAL__", str(port_val))
+    )
     return html

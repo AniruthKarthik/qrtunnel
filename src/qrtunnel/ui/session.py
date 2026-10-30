@@ -80,3 +80,4 @@ def render_receiver_session_script() -> str:
     }, 2000);
 })();
 </script>"""
+
