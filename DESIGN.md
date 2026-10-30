@@ -81,7 +81,7 @@ Typography is the backbone of the Bauhaus visual hierarchy. QRTunnel employs a d
 
 ### 4.1 Master Frame & Navigation
 The desktop host UI is framed in a solid structural container (`max-width: 920px`) with sharp corners, featuring:
-- **Brand Top Bar:** Interactive vector QR emblem (encoding and linking directly to the project GitHub repository `https://github.com/AniruthKarthik/qrtunnel`), uppercase logotype `QRTUNNEL`, version tag `v3.8.0`, and a live geometric status pip (`ONLINE // LAN: 192.168.1.10:6969`).
+- **Brand Top Bar:** Interactive vector QR emblem (encoding and linking directly to the project GitHub repository `https://github.com/AniruthKarthik/qrtunnel`), uppercase logotype `QRTUNNEL`, version tag `v3.8.1`, and a live geometric status pip (`ONLINE // LAN: 192.168.1.10:6969`).
 - **Architectural Segmented Navigation:**
   - `[ ↗ SEND FILES ]`: Host-to-client dispatch workflow with inline port controls.
   - `[ ↘ RECEIVE FILES ]`: Client-to-host ingest workflow with inline port controls.
@@ -123,7 +123,7 @@ On mobile and narrow desktop windows (`< 768px`), the layout stacks into a singl
 - To maximize usability and reduce screen clutter, port binding is directly editable and visible within the Send and Receive control panels.
 - Default port (`6969`) is explicitly populated and synchronized across both tabs.
 - Port updates are validated and committed asynchronously via `/api/sender/port` and `/api/receiver/mode`.
-- Minimalist footer displays active listening port and engine status without decorative system badges.
+- Clean layout without extraneous bottom footer clutter.
 
 ### 5.5 Mobile Client Screens
 - **Download Page (`/` or `/download`):** Bauhaus header, file count pill, `[ Select All ]` toggle, itemized file list with checkboxes and individual download arrows (`dl-single-btn`), batch `[ DOWNLOAD SELECTED (.ZIP) ]` action, and zipping progress bar.

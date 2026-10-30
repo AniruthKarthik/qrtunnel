@@ -1337,12 +1337,6 @@ body {
             </table>
         </div>
     </div>
-
-    <!-- Bottom App Footer -->
-    <div class="app-footer mono">
-        <span>QRTUNNEL // ARCHITECTURAL HIGH-PERFORMANCE FILE TUNNEL</span>
-        <span id="footer-port-display">PORT __PORT_VAL__</span>
-    </div>
 </div>
 
 <script>
@@ -1545,8 +1539,6 @@ if (applyPortBtn && portInput) {
                 portFeedback.textContent = `✓ Port set to ${data.port}`;
                 if (recPortInput) recPortInput.value = data.port;
                 if (portInput) portInput.value = data.port;
-                const footerPort = document.getElementById('footer-port-display');
-                if (footerPort) footerPort.textContent = 'PORT ' + data.port;
                 currentRecPort = data.port;
                 if (typeof initialState !== 'undefined' && initialState) initialState.port = data.port;
                 setTimeout(() => { portFeedback.style.display = 'none'; }, 3500);
@@ -1733,8 +1725,6 @@ function updateRecUi(data) {
         currentRecPort = data.port;
         if (recPortInput) recPortInput.value = data.port;
         if (portInput) portInput.value = data.port;
-        const footerPort = document.getElementById('footer-port-display');
-        if (footerPort) footerPort.textContent = 'PORT ' + data.port;
     }
     if (data.pin) {
         pinDisplay.textContent = data.pin;

@@ -13,7 +13,10 @@ _Changes not yet released go here._
 
 ---
 
-## [3.8.0] - 2026-10-30
+## [3.8.1] - 2026-10-30
+
+### Changed
+- Removed bottom footer text and port indicator from host dashboard for a cleaner, distraction-free interface.
 
 ### Added
 - Complete Bauhaus-inspired UI/UX redesign across all host and client interfaces:
