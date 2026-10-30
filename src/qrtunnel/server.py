@@ -385,8 +385,11 @@ button:active {{ transform:scale(0.99); }}
 </div></body></html>"""
         html = html.replace("</body>", f"{self.get_receiver_session_script()}</body>")
         self.send_response(200 if not error else 403)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(html.encode())))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(html.encode())
 
@@ -733,6 +736,8 @@ h1 {{ font-size:20px; font-weight:700; color:#0f172a; margin-bottom:6px; letter-
             and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
         )
         pin_str = str(Config.OTP or "----")
+        pin_padded = pin_str.ljust(4, "-")
+        pin_d0, pin_d1, pin_d2, pin_d3 = pin_padded[0], pin_padded[1], pin_padded[2], pin_padded[3]
         port_val = str(Config.LOCAL_PORT or 6969)
         rec_init_mode = "LAN" if has_lan else "Cloudflare"
         rec_init_url = (
@@ -783,66 +788,67 @@ body {
     align-items:center; justify-content:center; padding:24px 16px; -webkit-font-smoothing:antialiased;
 }
 .container {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; padding:28px 24px;
-    box-shadow:0 4px 6px -1px rgba(0,0,0,0.05),0 2px 4px -2px rgba(0,0,0,0.05);
-    max-width:440px; width:100%; text-align:center;
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:20px; padding:28px 24px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04),0 20px 25px -5px rgba(0,0,0,0.05),0 8px 10px -6px rgba(0,0,0,0.02);
+    max-width:480px; width:100%; text-align:center;
 }
-@media (max-width:480px) { .container { padding:20px 16px; border-radius:14px; } }
+@media (max-width:520px) { .container { padding:20px 16px; border-radius:16px; } }
 
-.top-brand { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:18px; }
+.top-brand { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:20px; }
 .top-brand-icon {
-    display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
-    border-radius:8px; background:#eff6ff; color:#2563eb;
+    display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px;
+    border-radius:9px; background:#eff6ff; color:#2563eb;
 }
-.top-brand-name { font-size:18px; font-weight:700; color:#0f172a; letter-spacing:-0.3px; }
+.top-brand-name { font-size:19px; font-weight:700; color:#0f172a; letter-spacing:-0.3px; }
+.status-badge {
+    display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+    color:#16a34a; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:9999px;
+    padding:2px 8px; margin-left:6px;
+}
+.status-dot { width:6px; height:6px; border-radius:50%; background:#16a34a; display:inline-block; }
 
 /* Segmented Tab Navigation */
 .tab-nav {
-    display:flex; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:10px;
-    padding:3px; margin-bottom:20px; gap:4px;
+    display:flex; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:12px;
+    padding:4px; margin-bottom:22px; gap:4px;
 }
 .tab-btn {
-    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
-    padding:9px 12px; border:none; border-radius:8px; font-size:13px; font-weight:600;
+    flex:1; display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    padding:10px 14px; border:none; border-radius:9px; font-size:13.5px; font-weight:600;
     color:#64748b; background:transparent; cursor:pointer; text-decoration:none !important;
     transition:all 0.15s ease; outline:none; user-select:none;
 }
 .tab-btn:hover { color:#0f172a; text-decoration:none !important; }
 .tab-btn.active {
-    color:#0f172a; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.08); font-weight:700;
-    text-decoration:none !important;
+    color:#0f172a; background:#ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04);
+    font-weight:700; text-decoration:none !important;
 }
 
 .panel { display:none; }
 .panel.active { display:block; }
 
 .header { text-align:center; margin-bottom:18px; }
-.badge-icon {
-    display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
-    border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:10px;
-}
 h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-spacing:-0.3px; }
 .subtitle { font-size:13px; color:#64748b; font-weight:400; line-height:1.4; }
 
 /* File Drop Area */
 .file-drop-area {
-    position:relative; border:2px dashed #cbd5e1; border-radius:12px; padding:24px 16px;
-    text-align:center; background:#f8fafc; cursor:pointer; transition:all 0.15s ease; margin-bottom:14px;
+    position:relative; border:2px dashed #cbd5e1; border-radius:14px; padding:28px 16px;
+    text-align:center; background:#ffffff; cursor:pointer; transition:all 0.15s ease; margin-bottom:16px;
 }
 .file-drop-area:hover, .file-drop-area.dragover { border-color:#2563eb; background:#eff6ff; }
 #file-input { position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer; }
 .drop-icon {
-    display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px;
-    border-radius:10px; background:#ffffff; border:1px solid #e2e8f0; color:#2563eb;
-    margin-bottom:8px;
+    display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px;
+    border-radius:12px; background:#eff6ff; color:#2563eb; margin-bottom:10px;
 }
-.drop-text { font-size:14px; font-weight:600; color:#0f172a; margin-bottom:2px; }
+.drop-text { font-size:14px; font-weight:600; color:#0f172a; margin-bottom:3px; }
 .drop-hint { font-size:12px; color:#64748b; }
 
 /* File Preview List */
 .file-preview-area { margin-bottom:16px; text-align:left; }
-.file-section-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-.file-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
+.file-section-header, .section-top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.file-section-title, .section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
 .file-count-badge { font-size:11px; font-weight:600; color:#2563eb; background:#eff6ff; padding:2px 8px; border-radius:12px; }
 .clear-btn { background:none; border:none; color:#dc2626; font-size:12px; font-weight:500; cursor:pointer; padding:2px 6px; border-radius:4px; text-decoration:none !important; }
 .clear-btn:hover { background:#fef2f2; }
@@ -859,38 +865,37 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 .file-summary { font-size:12px; font-weight:600; color:#2563eb; margin-top:8px; text-align:center; }
 
 /* Section Header & Inline Port */
-.section-box { margin-bottom:16px; text-align:left; }
-.section-top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-.section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
-.port-inline-wrap { display:inline-flex; align-items:center; gap:5px; }
-.port-inline-label { font-size:11px; font-weight:600; color:#64748b; }
-.port-inline-input {
-    width:56px; padding:3px 6px; background:#f8fafc; border:1px solid #cbd5e1;
-    border-radius:6px; font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-    font-weight:600; color:#0f172a; outline:none; text-align:center; transition:border 0.15s;
+.mode-section, .section-box { margin-bottom:16px; text-align:left; }
+.port-bar-wrap { display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:8px; padding:2px 4px 2px 8px; }
+.port-bar-label { font-size:11px; font-weight:600; color:#64748b; }
+.port-bar-input, .port-inline-input {
+    width:52px; padding:3px 4px; background:#ffffff; border:1px solid #cbd5e1;
+    border-radius:6px; font-size:11.5px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    font-weight:600; color:#0f172a; text-align:center; outline:none; transition:border 0.15s;
 }
-.port-inline-input:focus { border-color:#2563eb; background:#ffffff; }
-.port-inline-btn {
-    padding:3px 9px; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;
+.port-bar-input:focus, .port-inline-input:focus { border-color:#2563eb; }
+.port-bar-btn, .port-inline-btn {
+    padding:3px 8px; background:#2563eb; color:#ffffff; border:none;
     border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; text-decoration:none !important;
-    transition:all 0.15s;
+    transition:background 0.15s;
 }
-.port-inline-btn:hover { background:#dbeafe; }
+.port-bar-btn:hover, .port-inline-btn:hover { background:#1d4ed8; }
 
 /* Mode Selection Grid */
-.mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.mode-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:8px; }
 .mode-btn {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:9px; padding:9px 12px;
-    cursor:pointer; text-align:left; transition:all 0.15s ease; color:#0f172a; position:relative;
-    display:block; text-decoration:none !important;
+    background:#ffffff; border:1.5px solid #e2e8f0; border-radius:10px; padding:10px 4px;
+    text-align:center; cursor:pointer; transition:all 0.15s ease; color:#475569; user-select:none;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-decoration:none !important;
 }
-.mode-btn:hover { background:#f8fafc; border-color:#cbd5e1; }
+.mode-btn:hover { border-color:#cbd5e1; background:#f8fafc; color:#0f172a; }
 .mode-btn.active, .mode-btn.selected {
-    background:#eff6ff; border-color:#2563eb; color:#2563eb; font-weight:600;
+    border-color:#2563eb; background:#eff6ff; color:#2563eb; box-shadow:0 1px 2px rgba(37,99,235,0.1);
 }
-.mode-btn-title { font-size:12px; font-weight:600; display:block; color:#0f172a; margin-bottom:2px; }
-.mode-btn-desc { font-size:10px; color:#64748b; display:block; font-weight:400; }
-.mode-btn.active .mode-btn-title, .mode-btn.selected .mode-btn-title { color:#2563eb; }
+.mode-btn-title { font-size:12px; font-weight:700; display:block; color:#0f172a; line-height:1.2; }
+.mode-btn-desc { font-size:10px; color:#64748b; display:block; margin-top:2px; font-weight:500; }
+.mode-btn.active .mode-btn-title, .mode-btn.selected .mode-btn-title { color:#1d4ed8; }
+.mode-btn.active .mode-btn-desc, .mode-btn.selected .mode-btn-desc { color:#3b82f6; }
 .mode-btn input[type="radio"] { display:none; }
 
 .notice-box {
@@ -900,20 +905,23 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 
 /* Connection / QR Card */
 .qr-card {
-    background:#f8fafc; border:1px solid #e2e8f0; border-radius:14px; padding:20px 18px;
-    margin-bottom:16px; text-align:center; position:relative;
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:16px; padding:20px 18px;
+    margin:16px 0; text-align:center; position:relative;
+}
+.qr-frame {
+    display:inline-flex; align-items:center; justify-content:center;
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:14px; padding:14px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.04);
 }
 .qr-wrapper {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; padding:12px; display:inline-flex;
-    align-items:center; justify-content:center; max-width:200px; max-height:200px;
-    margin:0 auto; box-shadow:0 1px 3px rgba(0,0,0,0.04);
+    display:flex; align-items:center; justify-content:center; max-width:190px; max-height:190px;
 }
-.qr-wrapper svg { width:100%; height:100%; display:block; border-radius:4px; }
-.scan-hint { font-size:12px; color:#64748b; margin-top:8px; margin-bottom:14px; font-weight:400; }
+.qr-wrapper svg { width:100%; height:100%; display:block; border-radius:6px; }
+.scan-hint { font-size:12.5px; color:#64748b; margin-top:10px; margin-bottom:2px; font-weight:500; }
 
 .loading-overlay {
     position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.92);
-    border-radius:14px; display:flex; flex-direction:column;
+    border-radius:16px; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:8px; z-index:10;
 }
 .spinner {
@@ -923,39 +931,51 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 @keyframes spin { to { transform:rotate(360deg); } }
 .loading-text { font-size:12px; color:#64748b; font-weight:500; }
 
-/* Access Code Row */
-.credential-row {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:10px;
-    padding:9px 14px; margin-bottom:8px; display:flex; align-items:center;
-    justify-content:space-between; gap:12px; text-align:left;
+/* Prominent Access Code Display */
+.access-code-card {
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:14px;
+    padding:14px 16px; margin:14px 0 10px 0; box-shadow:0 1px 3px rgba(0,0,0,0.03);
+    text-align:center;
 }
-.credential-info { display:flex; flex-direction:column; gap:1px; }
-.credential-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#64748b; }
-.credential-sub { font-size:11px; color:#94a3b8; font-weight:400; }
-.pin-code-badge {
-    background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px;
-    padding:4px 12px; display:inline-flex; align-items:center; justify-content:center;
+.access-code-header {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:10px; padding:0 4px;
 }
-.pin-code-digits {
+.access-code-title {
+    display:flex; align-items:center; gap:5px; font-size:11px;
+    font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#64748b;
+}
+.access-code-sub { font-size:11px; color:#94a3b8; font-weight:500; }
+.digit-boxes { display:flex; justify-content:center; align-items:center; gap:8px; }
+.digit-box {
+    width:44px; height:52px; background:#f8fafc; border:1.5px solid #cbd5e1;
+    border-radius:10px; font-size:24px; font-weight:800; color:#0f172a;
+    display:flex; align-items:center; justify-content:center;
     font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-    font-size:17px; font-weight:800; color:#0f172a; letter-spacing:3px;
+    box-shadow:inset 0 1px 2px rgba(0,0,0,0.04); transition:all 0.15s ease;
 }
+.pin-hidden { display:none !important; }
 
 /* URL Row */
 .url-box, .url-badge {
     display:flex; align-items:center; justify-content:space-between; background:#ffffff;
-    border:1px solid #e2e8f0; border-radius:10px; padding:6px 8px 6px 14px; width:100%; box-sizing:border-box; gap:8px;
+    border:1px solid #e2e8f0; border-radius:10px; padding:6px 6px 6px 12px; width:100%; box-sizing:border-box; gap:8px; margin-top:10px;
 }
-.url-text { font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace; color:#2563eb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:left; font-weight:500; }
+.url-left { display:flex; align-items:center; gap:8px; overflow:hidden; min-width:0; flex:1; }
+.url-icon { color:#64748b; flex-shrink:0; }
+.url-text {
+    font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+    color:#2563eb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; font-weight:600;
+}
 .copy-btn {
-    background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:6px; padding:6px 12px;
-    font-size:11px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; flex-shrink:0;
+    background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:7px; padding:6px 12px;
+    font-size:11.5px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; flex-shrink:0;
 }
-.copy-btn:hover { background:#dbeafe; }
+.copy-btn:hover { background:#dbeafe; border-color:#93c5fd; }
 
 /* Progress Container */
 .progress-container, .progress-card {
-    background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-top:12px; text-align:left;
+    background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin-top:14px; text-align:left;
 }
 .progress-status, .progress-meta { font-size:13px; font-weight:600; color:#0f172a; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .progress-label { font-weight:600; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px; }
@@ -966,47 +986,47 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
 
 /* Incoming Transfers */
 .incoming-section { text-align:left; margin-bottom:16px; margin-top:14px; }
-.section-header-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
 .cwd-badge { font-size:11px; color:#64748b; background:#f1f5f9; border:1px solid #e2e8f0; padding:2px 8px; border-radius:6px; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .empty-state {
-    background:#ffffff; border:1px dashed #cbd5e1; border-radius:10px; padding:16px;
-    text-align:center; font-size:12px; color:#64748b; display:flex; align-items:center; justify-content:center; gap:8px;
+    background:#ffffff; border:1px dashed #cbd5e1; border-radius:12px; padding:20px;
+    text-align:center; font-size:12.5px; color:#64748b; display:flex; align-items:center; justify-content:center; gap:8px;
 }
 
 /* Action Buttons */
 .submit-button {
-    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px 20px;
-    background:#2563eb; color:#ffffff; border:none; border-radius:10px; font-size:14px; font-weight:600;
-    cursor:pointer; text-decoration:none !important; transition:all 0.15s; opacity:0.4; pointer-events:none;
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 20px;
+    background:#2563eb; color:#ffffff; border:none; border-radius:12px; font-size:14.5px; font-weight:600;
+    cursor:pointer; text-decoration:none !important; transition:all 0.15s; opacity:0.4; pointer-events:none; margin-top:14px;
 }
 .submit-button.enabled { opacity:1; pointer-events:auto; box-shadow:0 1px 2px rgba(37,99,235,0.2); }
 .submit-button.enabled:hover { background:#1d4ed8; }
 .stop-button {
-    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:10px 20px;
-    background:#ffffff; color:#dc2626; border:1px solid #fecaca; border-radius:10px;
-    font-size:13px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; margin-top:14px;
+    display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:11px 20px;
+    background:#ffffff; color:#dc2626; border:1px solid #fecaca; border-radius:12px;
+    font-size:13px; font-weight:600; cursor:pointer; text-decoration:none !important; transition:all 0.15s; margin-top:16px;
 }
 .stop-button:hover { background:#fef2f2; border-color:#fca5a5; }
-.footer { text-align:center; margin-top:20px; font-size:12px; color:#94a3b8; font-weight:500; }
+.footer { text-align:center; margin-top:22px; font-size:12px; color:#94a3b8; font-weight:500; }
 </style>
 </head>
 <body>
 <div class="container">
   <div class="top-brand">
     <div class="top-brand-icon">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
     </div>
     <span class="top-brand-name">qrtunnel</span>
+    <span class="status-badge"><span class="status-dot"></span>Ready</span>
   </div>
 
   <!-- Segmented Tab Navigation -->
   <div class="tab-nav">
     <a href="/sender" class="tab-btn active" id="tab-btn-send" onclick="switchMainTab('send'); return false;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
       Send Files
     </a>
     <a href="/receive" class="tab-btn" id="tab-btn-receive" onclick="switchMainTab('receive'); return false;">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Receive Files
     </a>
   </div>
@@ -1014,9 +1034,6 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
   <!-- PANEL 1: SEND FILES -->
   <div id="panel-send" class="panel active">
     <div class="header">
-      <div class="badge-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </div>
       <h1 id="page-title">Send Files</h1>
       <p class="subtitle" id="page-subtitle">Select files to share via QR code or link</p>
     </div>
@@ -1026,10 +1043,10 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
       <div class="file-drop-area" id="drop-area">
         <input type="file" id="file-input" multiple>
         <div class="drop-icon">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </div>
-        <p class="drop-text" id="drop-text">Tap to select files</p>
-        <p class="drop-hint">or drag and drop multiple files here</p>
+        <p class="drop-text" id="drop-text">Click or drag files here</p>
+        <p class="drop-hint">Select one or multiple files to send</p>
       </div>
 
       <div id="file-preview-area" class="file-preview-area" style="display:none;">
@@ -1044,20 +1061,36 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
         <div class="file-summary" id="file-summary"></div>
       </div>
 
-      <div class="section-box">
+      <div class="mode-section">
         <div class="section-top-bar">
           <span class="section-title">Tunnel Mode</span>
-          <div class="port-inline-wrap">
-            <span class="port-inline-label">Port:</span>
-            <input type="number" id="port-input" min="1" max="65535" value="""" + port_val + """" class="port-inline-input" />
-            <button type="button" id="apply-port-btn" class="port-inline-btn">Apply</button>
+          <div class="port-bar-wrap">
+            <span class="port-bar-label">Port:</span>
+            <input type="number" id="port-input" min="1" max="65535" value="""" + port_val + """" class="port-bar-input" />
+            <button type="button" id="apply-port-btn" class="port-bar-btn">Set</button>
           </div>
         </div>
         <div class="mode-grid">
-          <label class="mode-btn selected" id="lbl-lan"><input type="radio" name="mode" value="LAN" checked><span class="mode-btn-title">LAN (Local)</span><span class="mode-btn-desc">Fast same Wi-Fi transfer</span></label>
-          <label class="mode-btn" id="lbl-cf"><input type="radio" name="mode" value="Cloudflare"><span class="mode-btn-title">Cloudflare</span><span class="mode-btn-desc">No account required</span></label>
-          <label class="mode-btn" id="lbl-ssh"><input type="radio" name="mode" value="SSH"><span class="mode-btn-title">SSH Tunnel</span><span class="mode-btn-desc">Port 22/443 secure</span></label>
-          <label class="mode-btn" id="lbl-ngrok"><input type="radio" name="mode" value="Ngrok"><span class="mode-btn-title">Ngrok</span><span class="mode-btn-desc">Secure public link</span></label>
+          <label class="mode-btn selected" id="lbl-lan">
+            <input type="radio" name="mode" value="LAN" checked>
+            <span class="mode-btn-title">LAN</span>
+            <span class="mode-btn-desc">Local Wi-Fi</span>
+          </label>
+          <label class="mode-btn" id="lbl-cf">
+            <input type="radio" name="mode" value="Cloudflare">
+            <span class="mode-btn-title">Cloudflare</span>
+            <span class="mode-btn-desc">Public Tunnel</span>
+          </label>
+          <label class="mode-btn" id="lbl-ssh">
+            <input type="radio" name="mode" value="SSH">
+            <span class="mode-btn-title">SSH Tunnel</span>
+            <span class="mode-btn-desc">Port 22/443</span>
+          </label>
+          <label class="mode-btn" id="lbl-ngrok">
+            <input type="radio" name="mode" value="Ngrok">
+            <span class="mode-btn-title">Ngrok</span>
+            <span class="mode-btn-desc">Secure Link</span>
+          </label>
         </div>
         <div id="lan-mode-notice" class="notice-box" style="display:none;">Not in same LAN, switching to the other connection...</div>
         <div id="port-feedback" style="display:none;font-size:12px;margin-top:6px;border-radius:6px;padding:6px 10px;"></div>
@@ -1072,26 +1105,42 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
         Not in same LAN, switching to the other connection...
       </div>
       <div class="qr-card">
-        <div class="qr-wrapper" id="qr-wrapper"></div>
+        <div class="qr-frame">
+          <div class="qr-wrapper" id="qr-wrapper"></div>
+        </div>
         <p class="scan-hint">Scan with phone camera to download files</p>
-        <div class="credential-row">
-          <div class="credential-info">
-            <span class="credential-label">Access Code</span>
-            <span class="credential-sub">Enter on receiver device</span>
+
+        <!-- DEDICATED PROMINENT ACCESS CODE CARD -->
+        <div class="access-code-card">
+          <div class="access-code-header">
+            <div class="access-code-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span>ACCESS CODE</span>
+            </div>
+            <span class="access-code-sub">Enter on receiver device</span>
           </div>
-          <div class="pin-code-badge" id="pin-badge-wrap">
-            <span class="pin-code-digits" id="pin-val">----</span>
+          <div class="digit-boxes" id="pin-badge-wrap">
+            <div class="digit-box" id="send-d-0">-</div>
+            <div class="digit-box" id="send-d-1">-</div>
+            <div class="digit-box" id="send-d-2">-</div>
+            <div class="digit-box" id="send-d-3">-</div>
+            <span id="pin-val" class="pin-hidden">----</span>
           </div>
         </div>
+
+        <!-- URL ROW -->
         <div class="url-box url-badge">
-          <span class="url-text" id="target-url-text">http://...</span>
+          <div class="url-left">
+            <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span class="url-text" id="target-url-text">http://...</span>
+          </div>
           <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
         </div>
       </div>
 
       <div class="file-preview-area" id="active-files-area">
-        <div class="file-section-header">
-          <span class="file-section-title">Files Being Shared</span>
+        <div class="section-top-bar">
+          <span class="section-title">Files Being Shared</span>
           <span class="file-count-badge" id="active-file-count-badge">0</span>
         </div>
         <ul class="file-list" id="active-file-list"></ul>
@@ -1117,54 +1166,82 @@ h1 { font-size:20px; font-weight:700; color:#0f172a; margin-bottom:4px; letter-s
   <!-- PANEL 2: RECEIVE FILES -->
   <div id="panel-receive" class="panel">
     <div class="header">
-      <div class="badge-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </div>
       <h1>Receive Files</h1>
       <p class="subtitle">Select connection mode to show QR code for upload</p>
     </div>
 
-    <div class="section-box">
+    <div class="mode-section">
       <div class="section-top-bar">
         <span class="section-title">Connection Mode</span>
-        <div class="port-inline-wrap">
-          <span class="port-inline-label">Port:</span>
-          <input type="number" id="rec-port-input" min="1" max="65535" value="""" + port_val + """" class="port-inline-input" />
-          <button type="button" id="port-apply-btn" class="port-inline-btn">Apply</button>
+        <div class="port-bar-wrap">
+          <span class="port-bar-label">Port:</span>
+          <input type="number" id="rec-port-input" min="1" max="65535" value="""" + port_val + """" class="port-bar-input" />
+          <button type="button" id="port-apply-btn" class="port-bar-btn">Set</button>
         </div>
       </div>
       <div class="mode-grid">
-        <button type="button" class="mode-btn active" data-mode="LAN"><span class="mode-btn-title">LAN (Local)</span><span class="mode-btn-desc">Fast same Wi-Fi transfer</span></button>
-        <button type="button" class="mode-btn" data-mode="Cloudflare"><span class="mode-btn-title">Cloudflare</span><span class="mode-btn-desc">No account required</span></button>
-        <button type="button" class="mode-btn" data-mode="SSH"><span class="mode-btn-title">SSH Tunnel</span><span class="mode-btn-desc">Port 22/443 secure</span></button>
-        <button type="button" class="mode-btn" data-mode="Ngrok"><span class="mode-btn-title">Ngrok</span><span class="mode-btn-desc">Secure public link</span></button>
+        <button type="button" class="mode-btn active" data-mode="LAN">
+          <span class="mode-btn-title">LAN</span>
+          <span class="mode-btn-desc">Local Wi-Fi</span>
+        </button>
+        <button type="button" class="mode-btn" data-mode="Cloudflare">
+          <span class="mode-btn-title">Cloudflare</span>
+          <span class="mode-btn-desc">Public Tunnel</span>
+        </button>
+        <button type="button" class="mode-btn" data-mode="SSH">
+          <span class="mode-btn-title">SSH Tunnel</span>
+          <span class="mode-btn-desc">Port 22/443</span>
+        </button>
+        <button type="button" class="mode-btn" data-mode="Ngrok">
+          <span class="mode-btn-title">Ngrok</span>
+          <span class="mode-btn-desc">Secure Link</span>
+        </button>
       </div>
       <div id="rec-notice-box" class="notice-box" style="display:none;"></div>
     </div>
 
+    <!-- QR CARD -->
     <div class="qr-card">
-      <div id="rec-loading-spinner" class="loading-overlay" style="display:none;"><div class="spinner"></div><span id="rec-loading-text" class="loading-text">Connecting...</span></div>
-      <div class="qr-wrapper" id="rec-qr-wrapper">""" + rec_init_qr_svg + """</div>
+      <div id="rec-loading-spinner" class="loading-overlay" style="display:none;">
+        <div class="spinner"></div>
+        <span id="rec-loading-text" class="loading-text">Connecting...</span>
+      </div>
+      <div class="qr-frame">
+        <div class="qr-wrapper" id="rec-qr-wrapper">""" + rec_init_qr_svg + """</div>
+      </div>
       <p class="scan-hint">Scan with phone camera to open upload page</p>
 
-      <div class="credential-row">
-        <div class="credential-info">
-          <span class="credential-label">Access Code</span>
-          <span class="credential-sub">Enter on phone after scanning</span>
+      <!-- DEDICATED PROMINENT ACCESS CODE CARD -->
+      <div class="access-code-card">
+        <div class="access-code-header">
+          <div class="access-code-title">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span>ACCESS CODE</span>
+          </div>
+          <span class="access-code-sub">Enter on phone after scanning</span>
         </div>
-        <div class="pin-code-badge">
-          <span class="pin-code-digits" id="pin-display">""" + pin_str + """</span>
+        <div class="digit-boxes">
+          <div class="digit-box" id="rec-d-0">""" + pin_d0 + """</div>
+          <div class="digit-box" id="rec-d-1">""" + pin_d1 + """</div>
+          <div class="digit-box" id="rec-d-2">""" + pin_d2 + """</div>
+          <div class="digit-box" id="rec-d-3">""" + pin_d3 + """</div>
+          <span id="pin-display" class="pin-hidden">""" + pin_str + """</span>
         </div>
       </div>
 
+      <!-- URL ROW -->
       <div class="url-box">
-        <span class="url-text" id="rec-target-url-text">""" + rec_init_url + """</span>
+        <div class="url-left">
+          <svg class="url-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span class="url-text" id="rec-target-url-text">""" + rec_init_url + """</span>
+        </div>
         <button type="button" class="copy-btn" id="rec-copy-btn">Copy Link</button>
       </div>
     </div>
 
+    <!-- INCOMING SECTION -->
     <div class="incoming-section">
-      <div class="section-header-row">
+      <div class="section-top-bar">
         <span class="section-title">Incoming Transfers</span>
         <span class="cwd-badge" title="Save directory">📁 """ + cwd_name + """</span>
       </div>
@@ -1202,6 +1279,14 @@ function switchMainTab(tab) {
         if (!currentRecState || currentRecState.is_send !== false) {
             switchRecMode(currentRecMode, currentRecPort);
         }
+    }
+}
+
+function setPinDigits(pinStr, prefix) {
+    const s = String(pinStr || '----').padEnd(4, '-');
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(prefix + '-d-' + i);
+        if (el) el.textContent = s[i] || '-';
     }
 }
 
@@ -1483,6 +1568,7 @@ function switchToActiveView(data) {
         qrWrapper.innerHTML = data.qr_svg;
     }
     pinVal.textContent = data.pin || '----';
+    setPinDigits(data.pin, 'send');
     targetUrlText.textContent = data.target_url || '';
     if (data.port && activePortVal) {
         activePortVal.textContent = data.port;
@@ -1562,6 +1648,7 @@ function updateRecUi(data) {
     }
     if (data.pin) {
         pinDisplay.textContent = data.pin;
+        setPinDigits(data.pin, 'rec');
     }
     if (data.target_url) {
         currentRecUrl = data.target_url;
@@ -1787,8 +1874,11 @@ evtSource.addEventListener('close', () => {
 </body></html>""".replace("__INITIAL_STATE__", initial_state_json).replace("__DEFAULT_TAB__", default_tab)
 
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(html.encode("utf-8"))
 
@@ -2548,8 +2638,11 @@ window.ALT_CONNECTION_URL = "__ALT_URL__";
         html = html.replace("__ALT_URL__", alt_url)
         html = html.replace("</body>", f"{self.get_receiver_session_script()}</body>")
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(html.encode())))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
@@ -2819,8 +2912,11 @@ window.ALT_CONNECTION_URL = "__ALT_URL__";
         )
         html = html.replace("</body>", f"{self.get_receiver_session_script()}</body>")
         self.send_response(200)
-        self.send_header("Content-type", "text/html")
+        self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(html.encode())))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self._send_auth_cookie_if_needed()
         self.end_headers()
         self.wfile.write(html.encode())
