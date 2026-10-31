@@ -1,10 +1,151 @@
 """Synchronization manager between Terminal and Sender Web UI."""
 
+import atexit
 import os
 import queue
+import shutil
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from .config import Config
+
+
+def is_pid_alive(pid: int) -> bool:
+    """Check whether a process with the given PID is currently alive across all platforms."""
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+            if h:
+                exit_code = ctypes.c_ulong()
+                # 259 is STILL_ACTIVE
+                if kernel32.GetExitCodeProcess(h, ctypes.byref(exit_code)):
+                    kernel32.CloseHandle(h)
+                    return exit_code.value == 259
+                kernel32.CloseHandle(h)
+                return True
+            return False
+        except Exception:
+            return False
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def is_subpath(child: Path, parent: Path) -> bool:
+    """Check if child path is strictly inside parent path, cross-platform."""
+    try:
+        c = child.resolve()
+        p = parent.resolve()
+        if sys.platform == "win32":
+            c_str = str(c).lower().replace("/", "\\")
+            p_str = str(p).lower().replace("/", "\\")
+            if not p_str.endswith("\\"):
+                p_str += "\\"
+            return c_str.startswith(p_str) and c_str != p_str.rstrip("\\")
+        else:
+            c.relative_to(p)
+            return c != p
+    except (ValueError, OSError):
+        return False
+
+
+def remove_dir_force(path: Path):
+    """Safely and recursively remove a directory, handling read-only files on Windows."""
+
+    def _handle_remove_readonly(func, p, excinfo):
+        try:
+            import stat
+
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+
+    try:
+        shutil.rmtree(path, onerror=_handle_remove_readonly)
+    except Exception:
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def cleanup_stale_staging_dirs(force: bool = False) -> int:
+    """Clean up orphaned staging directories left behind by previous sessions or crashes.
+
+    Args:
+        force: If True (e.g. manual `qrtunnel clean`), remove all staging directories.
+               If False (startup garbage collection), only remove directories owned by
+               non-running processes or older than 15 minutes.
+
+    Returns:
+        int: Total number of bytes reclaimed.
+    """
+    staged_root = (Config.CONFIG_DIR / "staged").resolve()
+    if not staged_root.exists() or not staged_root.is_dir():
+        return 0
+
+    reclaimed_bytes = 0
+    current_pid = os.getpid()
+
+    try:
+        for entry in staged_root.iterdir():
+            try:
+                resolved_entry = entry.resolve()
+                # Security guarantee: must be strictly inside Config.CONFIG_DIR / "staged"
+                if not is_subpath(resolved_entry, staged_root):
+                    continue
+
+                should_delete = force
+
+                if not should_delete and resolved_entry.is_dir():
+                    pid_file = resolved_entry / ".owner_pid"
+                    if pid_file.exists():
+                        try:
+                            owner_pid = int(pid_file.read_text().strip())
+                            if owner_pid == current_pid or not is_pid_alive(owner_pid):
+                                should_delete = True
+                        except (ValueError, OSError):
+                            should_delete = True
+                    else:
+                        try:
+                            mtime = resolved_entry.stat().st_mtime
+                            if time.time() - mtime > 900:  # 15 minutes
+                                should_delete = True
+                        except OSError:
+                            should_delete = True
+
+                if should_delete:
+                    if resolved_entry.is_dir():
+                        for root, _, files in os.walk(resolved_entry):
+                            for f in files:
+                                try:
+                                    reclaimed_bytes += os.path.getsize(os.path.join(root, f))
+                                except OSError:
+                                    pass
+                        remove_dir_force(resolved_entry)
+                    elif resolved_entry.is_file():
+                        try:
+                            reclaimed_bytes += resolved_entry.stat().st_size
+                            resolved_entry.unlink()
+                        except OSError:
+                            pass
+            except (ValueError, OSError):
+                continue
+    except Exception:
+        pass
+
+    return reclaimed_bytes
 
 
 class SenderSync:
@@ -19,10 +160,14 @@ class SenderSync:
         self.is_send: bool = True
         self.is_active: bool = False
         self.file_paths: List[str] = []
+        self.staged_dirs: List[Path] = []
         self.target_url: str = ""
         self.qr_svg: str = ""
         self.status: str = "idle"  # idle, waiting, transferring, completed, stopped
         self.received_files: List[Dict[str, Any]] = []
+
+        # Register exit hook for automatic staging directory cleanup
+        atexit.register(self.cleanup_staged_files)
 
         # Progress tracking
         self.progress: Dict[str, Any] = {
@@ -61,7 +206,52 @@ class SenderSync:
             if server and server not in self.servers:
                 self.servers.append(server)
 
+    def register_staged_dir(self, staging_dir: Any):
+        """Register a staging directory for automatic lifecycle cleanup."""
+        path = Path(staging_dir)
+        with self._lock:
+            if path not in self.staged_dirs:
+                self.staged_dirs.append(path)
+
+    def cleanup_staged_files(self):
+        """Clean up all staged files created during web UI transfers."""
+        staged_root = (Config.CONFIG_DIR / "staged").resolve()
+
+        with self._lock:
+            dirs_to_clean = list(self.staged_dirs)
+            self.staged_dirs.clear()
+
+            # Remove staged file paths from active list while preserving original user files
+            new_paths = []
+            for fp in self.file_paths:
+                if not is_subpath(Path(fp), staged_root):
+                    new_paths.append(fp)
+            self.file_paths = new_paths
+
+        # Also safely clean FileTransferHandler.file_paths if it contains staged files
+        try:
+            from .server import FileTransferHandler
+
+            if FileTransferHandler.file_paths:
+                new_fth_paths = []
+                for fp in FileTransferHandler.file_paths:
+                    if not is_subpath(Path(fp), staged_root):
+                        new_fth_paths.append(fp)
+                FileTransferHandler.file_paths = new_fth_paths or None
+        except Exception:
+            pass
+
+        for d in dirs_to_clean:
+            try:
+                p = Path(d).resolve()
+                # Security: ONLY delete paths that are strictly subdirectories of CONFIG_DIR/staged
+                if is_subpath(p, staged_root) and p.exists() and p.is_dir():
+                    remove_dir_force(p)
+            except Exception:
+                pass
+
     def shutdown_all_servers(self):
+        self.cleanup_staged_files()
         with self._lock:
             to_stop = list(self.servers)
             if self.server and self.server not in to_stop:
@@ -158,6 +348,7 @@ class SenderSync:
         """Called when browser window is closed or sends close beacon."""
         if self.closed_by_browser.is_set() or self.shutdown_event.is_set():
             return
+        self.cleanup_staged_files()
         self.closed_by_browser.set()
         self.shutdown_event.set()
         self.broadcast_event("close", {"source": "browser"})
@@ -166,6 +357,7 @@ class SenderSync:
         """Called when terminal TUI or CLI exits."""
         if self.closed_by_terminal.is_set() or self.shutdown_event.is_set():
             return
+        self.cleanup_staged_files()
         self.closed_by_terminal.set()
         self.shutdown_event.set()
         self.broadcast_event("close", {"source": "terminal"})

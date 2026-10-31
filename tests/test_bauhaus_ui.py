@@ -62,9 +62,11 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert ".mono {" in html
     assert "JetBrains Mono" in html
 
+    from qrtunnel.constants import __version__
+
     # Brand emblem and architectural header with QR GitHub logo
     assert "QRTunnel" in html
-    assert "v3.8.0" in html
+    assert f"v{__version__}" in html
     assert "READY // LAN: 192.168.1.100:6969" in html
     assert "https://github.com/AniruthKarthik/qrtunnel" in html
     assert 'class="brand-emblem-box"' in html
@@ -79,9 +81,10 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert '<input type="number" id="port-input" min="1" max="65535" value="6969"' in html
     assert '<input type="number" id="rec-port-input" min="1" max="65535" value="6969"' in html
 
-    # Minimal clean footer without decorative branding
+    # Minimal clean layout without bottom footer clutter
+    assert "ARCHITECTURAL HIGH-PERFORMANCE FILE TUNNEL" not in html
     assert "BAUHAUS DESIGN SYSTEM" not in html
-    assert 'id="footer-port-display"' in html
+    assert 'id="footer-port-display"' not in html
 
     # 4-Box Access Code Digits
     assert 'id="send-d-0"' in html

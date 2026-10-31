@@ -177,6 +177,7 @@ def launch_server(
         sender_sync.close_from_terminal()
         tunnel_manager.stop()
         sender_sync.shutdown_all_servers()
+        sender_sync.cleanup_staged_files()
         try:
             server.shutdown()
             server.server_close()
@@ -288,7 +289,7 @@ def parse_args():
     # 2. Argparse Setup
     parser = argparse.ArgumentParser(
         description="qrtunnel: Elegant cross-platform file sharing via QR code.",
-        usage="%(prog)s [send|receive|tui|history] [files/dir] [options] [-PORT]",
+        usage="%(prog)s [send|receive|tui|history|clean] [files/dir] [options] [-PORT]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -298,6 +299,7 @@ Examples:
   qrtunnel send docs/ -cloudflare # Share directory via Cloudflare tunnel
   qrtunnel receive ./uploads      # Receive files into a specific folder
   qrtunnel receive -ngrok         # Receive files via ngrok tunnel
+  qrtunnel clean                  # Clean up temporary staged files and cache
 """,
     )
 
@@ -336,6 +338,16 @@ Examples:
     # HISTORY command
     p_history = subparsers.add_parser("history", help="Show recent transfer history")
     p_history.add_argument("--limit", type=int, default=20, help="Number of entries to show")
+
+    # CLEAN command
+    p_clean = subparsers.add_parser(
+        "clean", aliases=["cleanup"], help="Clean up temporary staged files and cache"
+    )
+    p_clean.add_argument(
+        "--all",
+        action="store_true",
+        help="Also clear transfer history",
+    )
 
     # Options for subcommands
     for p in [p_send, p_recv, p_tui]:
@@ -414,6 +426,26 @@ def validate_send_paths(paths):
 
 def main():
     args, cli_port = parse_args()
+
+    # ── CLEAN / CLEANUP COMMAND ──
+    if args.command in ("clean", "cleanup"):
+        from .history import clear_history
+        from .sync import cleanup_stale_staging_dirs
+        from .utils import format_size
+
+        freed_bytes = cleanup_stale_staging_dirs(force=True)
+        msg = f"{OK} Cleaned temporary staged files (freed {format_size(freed_bytes)})."
+        if getattr(args, "all", False):
+            clear_history()
+            msg += " Transfer history cleared."
+        print(msg)
+        return
+
+    # Background garbage collection of orphaned staging directories from prior crashes
+    from .sync import cleanup_stale_staging_dirs
+
+    cleanup_stale_staging_dirs(force=False)
+
     no_browser = getattr(args, "no_browser", False) or ("--no-browser" in sys.argv)
     expire_seconds = getattr(args, "expire", None)
     no_qr = getattr(args, "no_qr", False)

@@ -370,11 +370,14 @@ uploadForm.addEventListener('submit', (e) => {
     submitButton.classList.remove('enabled');
     submitButton.textContent = 'Uploading...';
     progressContainer.style.display = 'block';
+    window._isUploading = true;
 
     const formData = new FormData(uploadForm);
     const xhr = new XMLHttpRequest();
     let startTime = Date.now();
     let lastLoaded = 0;
+
+    xhr.open('POST', '/upload', true);
 
     xhr.upload.onprogress = (evt) => {
         if (evt.lengthComputable) {
@@ -394,6 +397,7 @@ uploadForm.addEventListener('submit', (e) => {
     };
 
     xhr.onload = () => {
+        window._isUploading = false;
         if (xhr.status === 200) {
             document.open();
             document.write(xhr.responseText);
@@ -406,6 +410,7 @@ uploadForm.addEventListener('submit', (e) => {
     };
 
     xhr.onerror = () => {
+        window._isUploading = false;
         alert('Network error during upload');
         submitButton.classList.add('enabled');
         submitButton.textContent = 'Upload Files';

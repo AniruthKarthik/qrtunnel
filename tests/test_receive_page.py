@@ -219,3 +219,60 @@ def test_tunnel_manager_explicit_backends():
         tm_ng = tunnels.TunnelManager(8080, tunnel_backend="ngrok")
         assert tm_ng.start() is True
         assert tm_ng.public_url == "https://ngrok-direct.ngrok-free.app"
+
+
+def test_broken_pipe_during_send_upload_page():
+    handler = create_handler(path="/", method="GET")
+    # Simulate broken pipe on wfile.write
+    handler.wfile = MagicMock()
+    handler.wfile.write.side_effect = BrokenPipeError("Broken pipe")
+
+    # Should not raise exception
+    handler.send_upload_page()
+    assert handler.close_connection is True
+
+
+def test_file_transfer_handler_handle_and_finish_catch_broken_pipe():
+    from qrtunnel.server import FileTransferHandler
+
+    # Mock instance of FileTransferHandler
+    mock_instance = MagicMock(spec=FileTransferHandler)
+    mock_instance.wfile = MagicMock()
+    mock_instance.wfile.closed = False
+    mock_instance.wfile.flush.side_effect = BrokenPipeError("Broken pipe")
+    mock_instance.close_connection = False
+
+    # Calling finish with BrokenPipeError on super().finish() should not raise
+    with patch("http.server.BaseHTTPRequestHandler.finish", side_effect=BrokenPipeError("Broken pipe")):
+        FileTransferHandler.finish(mock_instance)
+
+    # Calling handle with BrokenPipeError on super().handle() should set close_connection
+    with patch("http.server.BaseHTTPRequestHandler.handle", side_effect=BrokenPipeError("Broken pipe")):
+        FileTransferHandler.handle(mock_instance)
+        assert mock_instance.close_connection is True
+
+
+def test_threading_http_server_handle_error_suppresses_broken_pipe(capsys):
+    from qrtunnel.server import ThreadingHTTPServer
+
+    server = MagicMock(spec=ThreadingHTTPServer)
+
+    # Simulate BrokenPipeError in sys.exc_info()
+    try:
+        raise BrokenPipeError(32, "Broken pipe")
+    except BrokenPipeError:
+        ThreadingHTTPServer.handle_error(server, None, ("10.12.235.198", 39032))
+
+    captured = capsys.readouterr()
+    assert "BrokenPipeError" not in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_upload_page_contains_xhr_open_and_form_action():
+    from qrtunnel.ui.upload import render_upload_page
+
+    html = render_upload_page()
+    assert "xhr.open('POST', '/upload', true);" in html
+    assert 'action="/upload"' in html
+    assert 'id="upload-form"' in html
+

@@ -37,26 +37,19 @@ def render_receiver_session_script() -> str:
 
     try {
         var es = new EventSource('/api/receiver/events');
-        es.addEventListener('close', function() {
-            showSessionClosed();
-        });
-        es.addEventListener('error', function() {
-            fetch('/api/session/status', { cache: 'no-store' })
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    if (d && d.closed) showSessionClosed();
-                })
-                .catch(function() {
-                    setTimeout(function() {
-                        fetch('/api/session/status', { cache: 'no-store' })
-                            .catch(function() { showSessionClosed(); });
-                    }, 1000);
-                });
+        es.addEventListener('close', function(e) {
+            try {
+                var d = JSON.parse(e.data);
+                if (d && d.closed) showSessionClosed();
+            } catch(err) {
+                showSessionClosed();
+            }
         });
     } catch(e) {}
 
     var failedCount = 0;
     var checkInterval = setInterval(function() {
+        if (window._isUploading) return;
         fetch('/api/session/status', { cache: 'no-store' })
             .then(function(res) {
                 if (!res.ok) throw new Error('status ' + res.status);
@@ -71,13 +64,14 @@ def render_receiver_session_script() -> str:
                 }
             })
             .catch(function() {
+                if (window._isUploading) return;
                 failedCount++;
-                if (failedCount >= 2) {
+                if (failedCount >= 10) {
                     showSessionClosed();
                     clearInterval(checkInterval);
                 }
             });
-    }, 2000);
+    }, 3000);
 })();
 </script>"""
 
