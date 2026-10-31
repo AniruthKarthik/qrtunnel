@@ -13,6 +13,22 @@ _Changes not yet released go here._
 
 ---
 
+## [3.8.5] - 2026-10-31
+
+### Added
+- **Automated Web UI Staging Disk Lifecycle Management**:
+  - Automatically sweeps and deletes temporary staged upload files in `~/.qrtunnel/staged/` whenever a transfer session completes, the user clicks "Stop Transfer & Close", the browser window is closed (`beforeunload` beacon), the terminal process exits (`q` or Ctrl+C), or servers shut down.
+  - Startup garbage collection: automatically detects and reclaims orphaned staging directories left behind by prior ungraceful terminations (e.g. system reboot or `kill -9`), while safely protecting active transfers running in other concurrent instances using PID validation.
+- **Dedicated Cleanup CLI Command (`qrtunnel clean` / `qrtunnel cleanup`)**:
+  - Manually reclaim disk space by purging all temporary staged transfer directories, with optional `--all` flag to also clear transfer history.
+  - Formatted byte reporting displays exact disk space reclaimed.
+
+### Security & Safety
+- **Strict User File Isolation**:
+  - Path traversal and path isolation guards (`Path.relative_to`) ensure original files shared via CLI or receiver destination folders are never deleted or modified during cleanup. Staging cleanup is strictly confined to subdirectories of `~/.qrtunnel/staged/`.
+
+---
+
 ## [3.8.4] - 2026-10-30
 
 ### Fixed

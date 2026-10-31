@@ -907,11 +907,13 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def handle_sender_close(self):
+        sender_sync.cleanup_staged_files()
         sender_sync.close_from_browser()
         self.send_response(204)
         self.end_headers()
 
     def handle_sender_stop(self):
+        sender_sync.cleanup_staged_files()
         sender_sync.close_from_browser()
         self.send_response(204)
         self.end_headers()
@@ -1060,6 +1062,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.wfile.write(err_resp)
 
     def handle_sender_share(self):
+        target = None
         try:
             content_length_str = self.headers.get("Content-Length")
             if not content_length_str:
@@ -1067,8 +1070,18 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 return
             content_length = int(content_length_str)
 
-            staging_dir = Config.CONFIG_DIR / "staged" / str(int(time.time()))
+            # Clean up any previously staged files before starting a new staging
+            sender_sync.cleanup_staged_files()
+
+            staging_dir = (
+                Config.CONFIG_DIR / "staged" / f"{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            )
             staging_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                (staging_dir / ".owner_pid").write_text(str(os.getpid()))
+            except OSError:
+                pass
+            sender_sync.register_staged_dir(staging_dir)
 
             stream = LimitedStream(self.rfile, content_length)
             parser = StreamingFormDataParser(headers=self.headers)
@@ -1084,6 +1097,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
             if not target.files:
                 target.cleanup()
+                sender_sync.cleanup_staged_files()
                 self.send_error(400, "No files found in form data")
                 return
 
@@ -1251,6 +1265,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except Exception as e:
             print(f"{ERR} Error in handle_sender_share: {e}")
+            if target:
+                target.cleanup()
+            sender_sync.cleanup_staged_files()
             self.send_error(500, "Internal Server Error")
 
     def send_upload_page(self):
