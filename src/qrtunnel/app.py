@@ -12,6 +12,7 @@ import threading
 import time
 from pathlib import Path
 
+from .browser import launch_browser_window
 from .config import Config
 from .constants import (
     CLEAR,
@@ -31,20 +32,31 @@ from .constants import (
 from .history import print_history
 from .hotspot import HotspotHelper
 from .keyboard import read_key
-from .qr import generate_qr_code
+from .qr import generate_qr_code, generate_qr_svg
 from .server import FileTransferHandler, ThreadingHTTPServer
+from .sync import sender_sync
 from .tui import run_tui
 from .tunnels import TunnelManager
-from .utils import format_size, get_lan_ip
+from .utils import find_available_port, format_size, get_lan_ip
 
 
 # ─────────────────────────────────────────────────────────
 #  POST-TUI LAUNCH  (server + QR)
 # ─────────────────────────────────────────────────────────
-def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seconds=None):
-    """Everything that happens after the user confirms in the TUI."""
+def launch_server(
+    is_send,
+    file_paths,
+    mode_name,
+    port,
+    no_qr=False,
+    expire_seconds=None,
+    no_browser=False,
+    existing_server=None,
+):
+    """Everything that happens after the user confirms in the TUI or starts CLI."""
     Config.LOCAL_PORT = port
-    Config.OTP = f"{random.randint(0, 9999):04d}"
+    if not Config.OTP:
+        Config.OTP = f"{random.randint(0, 9999):04d}"
 
     # map mode_name → flags
     lan_only = mode_name == "LAN"
@@ -56,7 +68,7 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         noauth_mode = True
     else:  # LAN
         noauth_mode = True
-    tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok") else None
+    tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
 
     # ── banner ──
     print("\n" + "=" * 60)
@@ -79,38 +91,48 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
 
     # ── LAN / Hotspot check ──
     current_lan_ip = get_lan_ip()
-    if not current_lan_ip and not lan_only:
-        hotspot_helper = HotspotHelper()
-        qr_data = hotspot_helper.get_qr_data()
-        if qr_data:
-            qr_string, ssid, password = qr_data
-            print(f"\n{INFO} 📡 Faster local transfer available")
-            print("Turn on your phone hotspot and scan this QR to connect automatically:")
-            print("=" * 60)
-            try:
-                import qrcode
+    if not current_lan_ip:
+        if lan_only:
+            print(
+                f"\n{INFO} Not in same LAN (no local network detected), "
+                "switching to the other connection..."
+            )
+            mode_name = "Cloudflare"
+            lan_only = False
+            noauth_mode = True
+            tunnel_backend = "cloudflare"
+        else:
+            hotspot_helper = HotspotHelper()
+            qr_data = hotspot_helper.get_qr_data()
+            if qr_data:
+                qr_string, ssid, password = qr_data
+                print(f"\n{INFO} 📡 Faster local transfer available")
+                print("Turn on your phone hotspot and scan this QR to connect automatically:")
+                print("=" * 60)
+                try:
+                    import qrcode
 
-                qr = qrcode.QRCode()
-                qr.add_data(qr_string)
-                qr.make(fit=True)
-                qr.print_ascii(invert=True)
-            except ImportError:
-                print(f"{WRN} qrcode library not installed.")
-            print("=" * 60)
-            print(f"SSID:     {ssid}")
-            print(f"Password: {password}")
-            print("=" * 60)
-            print(f"{INFO} Waiting for connection…")
-            try:
-                for _ in range(15):
-                    time.sleep(2)
-                    new_ip = get_lan_ip()
-                    if new_ip:
-                        print(f"\n{OK} LAN Connection Detected: {new_ip}")
-                        current_lan_ip = new_ip
-                        break
-            except KeyboardInterrupt:
-                print("\nSkipping LAN wait…")
+                    qr = qrcode.QRCode()
+                    qr.add_data(qr_string)
+                    qr.make(fit=True)
+                    qr.print_ascii(invert=True)
+                except ImportError:
+                    print(f"{WRN} qrcode library not installed.")
+                print("=" * 60)
+                print(f"SSID:     {ssid}")
+                print(f"Password: {password}")
+                print("=" * 60)
+                print(f"{INFO} Waiting for connection…")
+                try:
+                    for _ in range(15):
+                        time.sleep(2)
+                        new_ip = get_lan_ip()
+                        if new_ip:
+                            print(f"\n{OK} LAN Connection Detected: {new_ip}")
+                            current_lan_ip = new_ip
+                            break
+                except KeyboardInterrupt:
+                    print("\nSkipping LAN wait…")
 
     # ── tunnel manager ──
     tunnel_manager = TunnelManager(
@@ -126,16 +148,22 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
     FileTransferHandler.upload_mode = not is_send
     FileTransferHandler.server_lan_ip = current_lan_ip
 
-    # ── start HTTP server ──
-    try:
-        server = ThreadingHTTPServer(("0.0.0.0", Config.LOCAL_PORT), FileTransferHandler)
-    except OSError as e:
-        print(f"\n{ERR} Error: Could not bind to port {Config.LOCAL_PORT}\n   {e}")
-        sys.exit(1)
+    # ── start HTTP server if not reusing existing ──
+    if existing_server is not None:
+        server = existing_server
+    else:
+        try:
+            server = ThreadingHTTPServer(("0.0.0.0", Config.LOCAL_PORT), FileTransferHandler)
+        except OSError as e:
+            print(f"\n{ERR} Error: Could not bind to port {Config.LOCAL_PORT}\n   {e}")
+            sys.exit(1)
 
-    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-    print(f"\n{OK} HTTP server started on all interfaces (port {Config.LOCAL_PORT})")
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        print(f"\n{OK} HTTP server started on all interfaces (port {Config.LOCAL_PORT})")
+
+        sender_sync.initialize(port=Config.LOCAL_PORT, pin=Config.OTP, lan_ip=current_lan_ip)
+        sender_sync.register_server(server)
 
     stopped = False
 
@@ -144,9 +172,15 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         if stopped:
             return
         stopped = True
+        sender_sync.close_from_terminal()
         tunnel_manager.stop()
-        server.shutdown()
-        server.server_close()
+        sender_sync.shutdown_all_servers()
+        sender_sync.cleanup_staged_files()
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:
+            pass
 
     atexit.register(cleanup)
     previous_sigint = signal.getsignal(signal.SIGINT)
@@ -166,12 +200,30 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
         cleanup()
         sys.exit(1)
 
-    # ── QR code ──
+    # ── QR code and sync ──
+    FileTransferHandler.public_url = tunnel_manager.public_url
+    FileTransferHandler.lan_url = tunnel_manager.lan_url
     target_url = (
         tunnel_manager.lan_url
         if lan_only
         else (tunnel_manager.public_url or tunnel_manager.lan_url)
     )
+    qr_svg = generate_qr_svg(target_url)
+
+    sender_sync.set_active_transfer(
+        is_send=is_send,
+        file_paths=file_paths,
+        mode_name=mode_name,
+        port=Config.LOCAL_PORT,
+        target_url=target_url,
+        pin=Config.OTP,
+        qr_svg=qr_svg,
+    )
+
+    if not no_browser and not sender_sync.browser_connected:
+        page_route = "/sender" if is_send else "/receive"
+        launch_browser_window(f"http://127.0.0.1:{Config.LOCAL_PORT}{page_route}")
+
     generate_qr_code(target_url, no_qr=no_qr)
 
     if expire_seconds:
@@ -184,10 +236,16 @@ def launch_server(is_send, file_paths, mode_name, port, no_qr=False, expire_seco
     # ── wait loop ──
     try:
         while True:
+            if sender_sync.is_closed():
+                print("\n[*] Browser closed or session ended. Shutting down…")
+                break
             if shutdown_at and time.monotonic() >= shutdown_at:
                 print("\n[*] Expiration reached. Shutting down…")
                 break
             key = read_key()
+            if sender_sync.is_closed():
+                print("\n[*] Browser closed or session ended. Shutting down…")
+                break
             if key and key.lower() == "q":
                 print("\n[*] 'q' pressed. Shutting down…")
                 break
@@ -214,7 +272,6 @@ def parse_args():
     port = 6969  # Default port
     clean_argv = []
 
-    port_found = False
     for arg in argv:
         # Match -1234 or --1234
         if re.match(r"^--?\d{2,5}$", arg):
@@ -222,31 +279,47 @@ def parse_args():
                 p = int(arg.lstrip("-"))
                 if 1 <= p <= 65535:
                     port = p
-                    port_found = True
                     continue
             except ValueError:
                 pass
         clean_argv.append(arg)
 
-    # If no args at all (and no port was just stripped), return None to trigger TUI
-    if not clean_argv and not port_found:
-        return None, None
-
     # 2. Argparse Setup
     parser = argparse.ArgumentParser(
         description="qrtunnel: Elegant cross-platform file sharing via QR code.",
-        usage="%(prog)s [send|receive] [files/dir] [options] [-PORT]",
+        usage="%(prog)s [send|receive|tui|history|clean] [files/dir] [options] [-PORT]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  qrtunnel                        # Start interactive TUI (default)
+  qrtunnel                        # Start Web UI in new browser window (default)
+  qrtunnel tui                    # Start interactive TUI in terminal
   qrtunnel send photo.jpg         # Share a file on local Wi-Fi (LAN)
   qrtunnel send docs/ -cloudflare # Share directory via Cloudflare tunnel
   qrtunnel receive ./uploads      # Receive files into a specific folder
   qrtunnel receive -ngrok         # Receive files via ngrok tunnel
+  qrtunnel clean                  # Clean up temporary staged files and cache
 """,
     )
+
+    # Global options for top-level (running 'qrtunnel' directly in UI mode)
+    parser.add_argument("--port", "-p", type=int, help="Specify port manually (e.g. -p 8080)")
+    parser.add_argument(
+        "--no-qr",
+        action="store_true",
+        help="Suppress terminal QR output and print only access links",
+    )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Suppress automatic browser window opening",
+    )
+    parser.add_argument("--expire", type=int, help="Auto-shutdown after N seconds")
+    parser.add_argument("-v", "--version", action="version", version=f"qrtunnel {__version__}")
+
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # TUI command (only 'qrtunnel tui' triggers the terminal TUI)
+    p_tui = subparsers.add_parser("tui", help="Start interactive terminal TUI")
 
     # SEND command
     p_send = subparsers.add_parser("send", help="Share files or directories with others")
@@ -262,8 +335,18 @@ Examples:
     p_history = subparsers.add_parser("history", help="Show recent transfer history")
     p_history.add_argument("--limit", type=int, default=20, help="Number of entries to show")
 
-    # Global Options
-    for p in [p_send, p_recv]:
+    # CLEAN command
+    p_clean = subparsers.add_parser(
+        "clean", aliases=["cleanup"], help="Clean up temporary staged files and cache"
+    )
+    p_clean.add_argument(
+        "--all",
+        action="store_true",
+        help="Also clear transfer history",
+    )
+
+    # Options for subcommands
+    for p in [p_send, p_recv, p_tui]:
         g = p.add_argument_group("Tunneling Options")
         m = g.add_mutually_exclusive_group()
         m.add_argument(
@@ -289,20 +372,17 @@ Examples:
             action="store_true",
             help="Suppress terminal QR output and print only access links",
         )
+        p.add_argument(
+            "--no-browser",
+            action="store_true",
+            help="Suppress automatic browser window opening",
+        )
         p.add_argument("--expire", type=int, help="Auto-shutdown after N seconds")
         p.add_argument("-v", "--version", action="version", version=f"qrtunnel {__version__}")
 
-    # 3. Parse
-    if not clean_argv:
-        # If user typed just "-8080", we technically have a port but no command.
-        # We can't infer send/receive. Default to TUI or Error?
-        # Let's print help.
-        print(f"{ERR} Please specify 'send' or 'receive' command.")
-        return None, None
-
     args = parser.parse_args(clean_argv)
 
-    # Override port if explicitly set via --port
+    # Override port if explicitly set via --port or custom port syntax
     if getattr(args, "port", None):
         port = args.port
 
@@ -343,20 +423,185 @@ def validate_send_paths(paths):
 def main():
     args, cli_port = parse_args()
 
-    # ── TUI MODE ──
-    if args is None:
+    # ── CLEAN / CLEANUP COMMAND ──
+    if args.command in ("clean", "cleanup"):
+        from .history import clear_history
+        from .sync import cleanup_stale_staging_dirs
+        from .utils import format_size
+
+        freed_bytes = cleanup_stale_staging_dirs(force=True)
+        msg = f"{OK} Cleaned temporary staged files (freed {format_size(freed_bytes)})."
+        if getattr(args, "all", False):
+            clear_history()
+            msg += " Transfer history cleared."
+        print(msg)
+        return
+
+    # Background garbage collection of orphaned staging directories from prior crashes
+    from .sync import cleanup_stale_staging_dirs
+
+    cleanup_stale_staging_dirs(force=False)
+
+    no_browser = getattr(args, "no_browser", False) or ("--no-browser" in sys.argv)
+    expire_seconds = getattr(args, "expire", None)
+    no_qr = getattr(args, "no_qr", False)
+
+    # ── DEFAULT / SENDER WEB UI MODE (no command specified) ──
+    if args.command is None:
+        port = cli_port if cli_port else find_available_port()
+        Config.LOCAL_PORT = port
+        Config.OTP = f"{random.randint(0, 9999):04d}"
+        current_lan_ip = get_lan_ip()
+        FileTransferHandler.server_lan_ip = current_lan_ip
+        FileTransferHandler.file_paths = None
+        FileTransferHandler.upload_mode = False
+
+        try:
+            server = ThreadingHTTPServer(("0.0.0.0", port), FileTransferHandler)
+        except OSError as e:
+            print(f"\n{ERR} Error: Could not bind to port {port}\n   {e}")
+            sys.exit(1)
+
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+        sender_sync.initialize(port=port, pin=Config.OTP, lan_ip=current_lan_ip)
+        sender_sync.register_server(server)
+
+        if not no_browser:
+            launch_browser_window(f"http://127.0.0.1:{port}/")
+
+        main_url = f"http://127.0.0.1:{port}/"
+        print("\n" + "=" * 60)
+        print(f"  {CLR_B}{CLR_BLD}qrtunnel{CLR_RST}")
+        print("=" * 60)
+        print(f"  Web UI        : {CLR_C}{main_url}{CLR_RST} (Send & Receive)")
+        print(f"  Access Code   : {CLR_Y}{Config.OTP}{CLR_RST}")
+        print(f"  Mode          : {CLR_G}Send & Receive Files{CLR_RST}")
+        print(f"  Status        : {CLR_G}Opened in a new browser window{CLR_RST}")
+        print("=" * 60)
+        if expire_seconds:
+            print(
+                f"[*] Server is running for {expire_seconds} seconds. Press 'q' or Ctrl+C to stop.\n"
+            )
+            shutdown_at = time.monotonic() + expire_seconds
+        else:
+            print("[*] Server is running. Press 'q' or Ctrl+C in terminal or Stop in browser.\n")
+            shutdown_at = None
+
+        stopped = False
+
+        def cleanup():
+            nonlocal stopped
+            if stopped:
+                return
+            stopped = True
+            sender_sync.close_from_terminal()
+            if sender_sync.tunnel_manager:
+                sender_sync.tunnel_manager.stop()
+            sender_sync.shutdown_all_servers()
+            try:
+                server.shutdown()
+                server.server_close()
+            except Exception:
+                pass
+
+        atexit.register(cleanup)
+        previous_sigint = signal.getsignal(signal.SIGINT)
+
+        def handle_sigint(signum, frame):
+            print("\n[*] Ctrl+C pressed. Shutting down…")
+            cleanup()
+            sys.exit(130)
+
+        try:
+            signal.signal(signal.SIGINT, handle_sigint)
+        except ValueError:
+            previous_sigint = None
+
+        try:
+            while True:
+                if sender_sync.is_closed():
+                    print("\n[*] Browser closed or session ended. Shutting down…")
+                    break
+                if shutdown_at and time.monotonic() >= shutdown_at:
+                    print("\n[*] Expiration reached. Shutting down…")
+                    break
+                key = read_key()
+                if sender_sync.is_closed():
+                    print("\n[*] Browser closed or session ended. Shutting down…")
+                    break
+                if key and key.lower() == "q":
+                    print("\n[*] 'q' pressed. Shutting down…")
+                    break
+                if key == "CTRL_C":
+                    print("\n[*] Ctrl+C pressed. Shutting down…")
+                    break
+        except KeyboardInterrupt:
+            print("\n[*] Ctrl+C pressed. Shutting down…")
+        finally:
+            cleanup()
+            atexit.unregister(cleanup)
+            if previous_sigint is not None:
+                signal.signal(signal.SIGINT, previous_sigint)
+            print("[*] Server stopped. Goodbye!\n")
+            sys.exit(0)
+
+    # ── TUI MODE (`qrtunnel tui`) ──
+    if args.command == "tui":
+        port = cli_port if cli_port else find_available_port()
+        Config.LOCAL_PORT = port
+        Config.OTP = f"{random.randint(0, 9999):04d}"
+        current_lan_ip = get_lan_ip()
+        FileTransferHandler.server_lan_ip = current_lan_ip
+        FileTransferHandler.file_paths = None
+        FileTransferHandler.upload_mode = False
+
+        try:
+            server = ThreadingHTTPServer(("0.0.0.0", port), FileTransferHandler)
+        except OSError as e:
+            print(f"\n{ERR} Error: Could not bind to port {port}\n   {e}")
+            sys.exit(1)
+
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+        sender_sync.initialize(port=port, pin=Config.OTP, lan_ip=current_lan_ip)
+        sender_sync.server = server
+
         result = run_tui()
         if result is None:
+            sender_sync.close_from_terminal()
+            server.shutdown()
+            server.server_close()
             print("\n[*] Exited. Goodbye!\n")
             sys.exit(0)
-        is_send, file_paths, mode_name, port = result
 
-        # TUI already confirms, so we just launch
+        is_send, file_paths, mode_name, chosen_port = result
+
         if is_send and not file_paths:
+            sender_sync.close_from_terminal()
+            server.shutdown()
+            server.server_close()
             sys.stdout.write(CLEAR)
             print(f"\n{ERR} No files selected. Please re-run and select at least one file.\n")
             sys.exit(1)
-        launch_server(is_send, file_paths, mode_name, port)
+
+        if chosen_port != port and not sender_sync.transfer_started_event.is_set():
+            server.shutdown()
+            server.server_close()
+            server = None
+
+        launch_server(
+            is_send,
+            file_paths,
+            mode_name,
+            chosen_port,
+            no_qr=no_qr,
+            expire_seconds=expire_seconds,
+            no_browser=True,
+            existing_server=server,
+        )
         return
 
     # ── CLI MODE ──
@@ -421,4 +666,9 @@ def main():
         cli_port,
         no_qr=args.no_qr,
         expire_seconds=args.expire,
+        no_browser=no_browser,
     )
+
+
+if __name__ == "__main__":
+    main()

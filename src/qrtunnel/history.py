@@ -23,6 +23,12 @@ def load_history():
     return data if isinstance(data, list) else []
 
 
+def clear_history():
+    Config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with open(history_file(), "w") as f:
+        json.dump([], f)
+
+
 def log_transfer(filename, size, client_ip, direction):
     Config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     entries = load_history()

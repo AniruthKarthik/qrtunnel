@@ -22,6 +22,7 @@ from .constants import (
     __version__,
 )
 from .keyboard import read_key
+from .sync import sender_sync
 from .utils import find_available_port, format_size
 
 # ─────────────────────────────────────────────────────────
@@ -360,7 +361,26 @@ def run_tui():
                     render(draw_confirm(mode_name, screen_is_send, selected_files, port_val))
 
                 # ── READ KEY ──
+                if sender_sync.is_closed():
+                    return None
+                if sender_sync.transfer_started_event.is_set():
+                    return (
+                        sender_sync.is_send,
+                        sender_sync.file_paths,
+                        sender_sync.mode_name,
+                        sender_sync.port,
+                    )
+
                 key = read_key()
+                if sender_sync.is_closed():
+                    return None
+                if sender_sync.transfer_started_event.is_set():
+                    return (
+                        sender_sync.is_send,
+                        sender_sync.file_paths,
+                        sender_sync.mode_name,
+                        sender_sync.port,
+                    )
                 if key is None:
                     continue
                 if key == "CTRL_C":

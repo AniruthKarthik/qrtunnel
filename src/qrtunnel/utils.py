@@ -6,6 +6,8 @@ import platform
 import random
 import socket
 import subprocess
+import threading
+from pathlib import Path
 
 IGNORED_INTERFACE_PREFIXES = (
     "br-",
@@ -40,7 +42,37 @@ def format_progress(transferred, total, width=24):
     return f"[{bar}] {ratio * 100:5.1f}% {format_size(transferred)} / {format_size(total)}"
 
 
-def sha256_file(path, chunk_size=1024 * 1024):
+_CHECKSUM_CACHE = {}
+_CHECKSUM_LOCK = threading.Lock()
+
+
+def store_cached_checksum(path, hexdigest):
+    """Store precomputed checksum (e.g. from upload streaming) to avoid redundant disk reads."""
+    try:
+        p = Path(path)
+        stat = p.stat()
+        cache_key = (str(p.resolve()), stat.st_mtime_ns, stat.st_size)
+        with _CHECKSUM_LOCK:
+            if len(_CHECKSUM_CACHE) > 2048:
+                _CHECKSUM_CACHE.clear()
+            _CHECKSUM_CACHE[cache_key] = hexdigest
+    except Exception:
+        pass
+
+
+def sha256_file(path, chunk_size=1024 * 1024, use_cache=True):
+    cache_key = None
+    if use_cache:
+        try:
+            p = Path(path)
+            stat = p.stat()
+            cache_key = (str(p.resolve()), stat.st_mtime_ns, stat.st_size)
+            with _CHECKSUM_LOCK:
+                if cache_key in _CHECKSUM_CACHE:
+                    return _CHECKSUM_CACHE[cache_key]
+        except Exception:
+            cache_key = None
+
     digest = hashlib.sha256()
     with open(path, "rb") as f:
         while True:
@@ -48,7 +80,15 @@ def sha256_file(path, chunk_size=1024 * 1024):
             if not chunk:
                 break
             digest.update(chunk)
-    return digest.hexdigest()
+    hexdigest = digest.hexdigest()
+
+    if use_cache and cache_key:
+        with _CHECKSUM_LOCK:
+            if len(_CHECKSUM_CACHE) > 2048:
+                _CHECKSUM_CACHE.clear()
+            _CHECKSUM_CACHE[cache_key] = hexdigest
+
+    return hexdigest
 
 
 def is_port_available(port, host="0.0.0.0"):
@@ -109,20 +149,37 @@ def _get_linux_interface_ips():
     return ips
 
 
+def _get_darwin_interface_ips():
+    ips = []
+    for iface in ("en0", "en1", "en2", "en3", "en4"):
+        try:
+            result = subprocess.run(
+                ["ipconfig", "getifaddr", iface],
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+            ip = result.stdout.strip()
+            if ip and _is_usable_lan_ip(ip):
+                ips.append(ip)
+        except Exception:
+            pass
+    return ips
+
+
 def get_lan_ip():
     if platform.system() == "Linux":
         interface_ips = _get_linux_interface_ips()
         if interface_ips:
             return interface_ips[0]
 
-    try:
-        hostname = socket.gethostname()
-        for ip in socket.gethostbyname_ex(hostname)[2]:
-            if _is_usable_lan_ip(ip):
-                return str(ip)
-    except Exception:
-        pass
+    if platform.system() == "Darwin":
+        interface_ips = _get_darwin_interface_ips()
+        if interface_ips:
+            return interface_ips[0]
 
+    # Fast UDP routing table probe: kernel resolves local interface IP in <0.1ms without DNS
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
@@ -133,6 +190,16 @@ def get_lan_ip():
             return str(ip)
     except Exception:
         pass
+
+    # Fallback to hostname resolution if UDP routing probe is unavailable (e.g. offline)
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if _is_usable_lan_ip(ip):
+                return str(ip)
+    except Exception:
+        pass
+
     return None
 
 

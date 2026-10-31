@@ -13,9 +13,56 @@ _Changes not yet released go here._
 
 ---
 
-## [3.7.0] - 2026-05-07
+## [3.8.5] - 2026-10-31
 
 ### Added
+- **Automated Web UI Staging Disk Lifecycle Management**:
+  - Automatically sweeps and deletes temporary staged upload files in `~/.qrtunnel/staged/` whenever a transfer session completes, the user clicks "Stop Transfer & Close", the browser window is closed (`beforeunload` beacon), the terminal process exits (`q` or Ctrl+C), or servers shut down.
+  - Startup garbage collection: automatically detects and reclaims orphaned staging directories left behind by prior ungraceful terminations (e.g. system reboot or `kill -9`), while safely protecting active transfers running in other concurrent instances using PID validation.
+- **Dedicated Cleanup CLI Command (`qrtunnel clean` / `qrtunnel cleanup`)**:
+  - Manually reclaim disk space by purging all temporary staged transfer directories, with optional `--all` flag to also clear transfer history.
+  - Formatted byte reporting displays exact disk space reclaimed.
+
+### Security & Safety
+- **Strict User File Isolation**:
+  - Path traversal and path isolation guards (`Path.relative_to`) ensure original files shared via CLI or receiver destination folders are never deleted or modified during cleanup. Staging cleanup is strictly confined to subdirectories of `~/.qrtunnel/staged/`.
+
+---
+
+## [3.8.4] - 2026-10-30
+
+### Fixed
+- **Bauhaus Dashboard Layout & Alignment**:
+  - Resolved CSS Grid column blow-out by setting `minmax(0, ...)` tracks and `min-width: 0` on workspace panes, preventing long filenames from overflowing `.app-frame`.
+  - Fixed application frame height sizing and eliminated bottom border truncation through action buttons.
+  - Corrected responsive breakpoint to `@media (max-width: 820px)` for seamless single-column layout on smaller viewports.
+  - Mathematical subpixel alignment for QR monolith, 4-box access code, and URL copy strip.
+
+### Added
+- **Structured Transfer Session Details**: Added a Bauhaus metadata panel to the outgoing transfer view displaying active tunnel mode, port, PIN security status, and working directory.
+
+---
+
+## [3.8.1] - 2026-10-30
+
+### Changed
+- Removed bottom footer text and port indicator from host dashboard for a cleaner, distraction-free interface.
+
+### Added
+- Complete Bauhaus-inspired UI/UX redesign across all host and client interfaces:
+  - Bauhaus Design System (`src/qrtunnel/ui/theme.py`) featuring authentic color palette (warm ivory `#F8F6F0`, deep charcoal ink `#111215`, cadmium red `#D22626`, cobalt blue `#164785`, chrome ochre `#E5A110`).
+  - Unified desktop host dashboard (`src/qrtunnel/ui/dashboard.py`) with streamlined 3-tab navigation (Send, Receive, History).
+  - Interactive vector QR logo pointing to the creator's GitHub repository (`https://github.com/AniruthKarthik/qrtunnel`).
+  - Asymmetric desktop workspace grid with prominent QR monolith and Bauhaus corner registration brackets.
+  - Dedicated 4-box monospaced Access Code card for high visibility.
+  - Real-time telemetry dashboard with live progress bar, speed readout, transferred/total bytes, and ETA estimation.
+  - Interactive transfer history panel powered by `/api/history` with filtering, audit logging, and one-click history clearing (`POST /api/history/clear`).
+  - Direct inline port selector and synchronization across Send and Receive workflows.
+  - Redesigned mobile client download page (`src/qrtunnel/ui/download.py`) with itemized selection and streaming zip bundling.
+  - Redesigned mobile client upload page (`src/qrtunnel/ui/upload.py`) with live speed tracking and multi-file dropzone.
+  - Redesigned security check page (`src/qrtunnel/ui/login.py`) with geometric lock iconography and 4-digit code entry.
+  - Redesigned upload receipt page (`src/qrtunnel/ui/success.py`) and session closed overlay (`src/qrtunnel/ui/session.py`).
+  - Comprehensive design documentation in `DESIGN.md`.
 - Real-time transfer progress bars in TUI for both uploads and downloads.
 - On-the-fly ZIP archive bundling for multi-file/directory downloads.
 - Local transfer history logging with `qrtunnel history` command.
