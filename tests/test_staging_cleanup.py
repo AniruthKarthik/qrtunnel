@@ -1,6 +1,7 @@
 """Tests for staging disk cleanup and lifecycle management."""
 
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -201,3 +202,154 @@ def test_api_sender_stop_and_close_handlers(temp_config_dir):
     FileTransferHandler.handle_sender_stop(handler)
     assert not staging_dir.exists()
     handler.send_response.assert_called_with(204)
+
+
+def test_cross_platform_is_subpath_windows():
+    """Verify is_subpath correctly handles Windows drive letters, casing, and slash variants."""
+    from qrtunnel.sync import is_subpath
+
+    with patch("sys.platform", "win32"):
+        parent = Path("C:/Users/Tester/.qrtunnel/staged")
+        # Subpath with mixed case and backslashes
+        child = Path("c:\\users\\tester\\.qrtunnel\\STAGED\\session1\\file.bin")
+        # Directory with prefix trick (staged_malicious is NOT inside staged)
+        trick = Path("C:\\Users\\Tester\\.qrtunnel\\staged_other\\file.bin")
+        # Outside user path
+        user_path = Path("C:\\Users\\Tester\\Downloads\\doc.pdf")
+
+        assert is_subpath(child, parent) is True
+        assert is_subpath(trick, parent) is False
+        assert is_subpath(user_path, parent) is False
+        assert is_subpath(parent, parent) is False
+
+
+def test_cross_platform_windows_pid_alive():
+    """Verify is_pid_alive behaves accurately on Windows using kernel32 APIs."""
+    import ctypes as real_ctypes
+
+    from qrtunnel.sync import is_pid_alive
+
+    mock_kernel32 = MagicMock()
+    # Case 1: Process alive (STILL_ACTIVE = 259)
+    mock_kernel32.OpenProcess.return_value = 1234
+
+    def mock_get_exit_alive(h, ref):
+        ref._obj.value = 259
+        return True
+
+    mock_kernel32.GetExitCodeProcess.side_effect = mock_get_exit_alive
+
+    mock_ctypes = MagicMock()
+    mock_ctypes.windll.kernel32 = mock_kernel32
+    mock_ctypes.c_ulong = real_ctypes.c_ulong
+    mock_ctypes.byref = real_ctypes.byref
+
+    with patch("sys.platform", "win32"), patch.dict("sys.modules", {"ctypes": mock_ctypes}):
+        assert is_pid_alive(42) is True
+
+    # Case 2: Process terminated (exit code 0)
+    def mock_get_exit_terminated(h, ref):
+        ref._obj.value = 0
+        return True
+
+    mock_kernel32.GetExitCodeProcess.side_effect = mock_get_exit_terminated
+    with patch("sys.platform", "win32"), patch.dict("sys.modules", {"ctypes": mock_ctypes}):
+        assert is_pid_alive(42) is False
+
+    # Case 3: Process does not exist (OpenProcess returns 0 / None)
+    mock_kernel32.OpenProcess.return_value = 0
+    with patch("sys.platform", "win32"), patch.dict("sys.modules", {"ctypes": mock_ctypes}):
+        assert is_pid_alive(42) is False
+
+
+def test_remove_dir_force_handles_readonly(tmp_path):
+    """Verify remove_dir_force deletes directories even with read-only files (Windows protection)."""
+    import stat
+
+    from qrtunnel.sync import remove_dir_force
+
+    target_dir = tmp_path / "locked_dir"
+    target_dir.mkdir()
+    locked_file = target_dir / "read_only.txt"
+    locked_file.write_text("protected content")
+    # Make file read-only
+    os.chmod(locked_file, stat.S_IREAD)
+
+    remove_dir_force(target_dir)
+    assert not target_dir.exists()
+
+
+def test_end_to_end_web_ui_transfer_and_cleanup(temp_config_dir):
+    """End-to-end integration test: Multipart Web UI upload, download, and stop cleanup."""
+    import http.client
+    import threading
+
+    from qrtunnel.server import ThreadingHTTPServer
+    from qrtunnel.utils import get_lan_ip
+
+    test_port = 19123
+    Config.LOCAL_PORT = test_port
+    Config.OTP = "9876"
+    FileTransferHandler.server_lan_ip = get_lan_ip()
+    FileTransferHandler.file_paths = None
+    FileTransferHandler.upload_mode = False
+
+    server = ThreadingHTTPServer(("127.0.0.1", test_port), FileTransferHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    sender_sync.initialize(port=test_port, pin="9876", lan_ip=get_lan_ip())
+    sender_sync.register_server(server)
+
+    try:
+        # 1. Share a 512KB payload via Web UI
+        payload = b"QRTUNNEL_TEST_DATA_" * (32 * 1024)
+        boundary = "----TestBoundaryCrossPlatform"
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="payload.bin"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode() + payload + f"\r\n--{boundary}--\r\n".encode()
+
+        conn = http.client.HTTPConnection("127.0.0.1", test_port)
+        headers = {
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(len(body)),
+        }
+        conn.request("POST", "/api/sender/share?mode=LAN", body=body, headers=headers)
+        resp = conn.getresponse()
+        assert resp.status == 200
+        resp.read()
+
+        # Verify staged file exists
+        staged_root = temp_config_dir / "staged"
+        staged_dirs = [d for d in staged_root.iterdir() if d.is_dir()]
+        assert len(staged_dirs) == 1
+        staged_file = staged_dirs[0] / "payload.bin"
+        assert staged_file.exists()
+        assert staged_file.stat().st_size == len(payload)
+
+        # 2. Authenticate and download file as client
+        conn.request("POST", "/login", body="password=9876", headers={"Content-Type": "application/x-www-form-urlencoded"})
+        login_resp = conn.getresponse()
+        cookie = login_resp.getheader("Set-Cookie")
+        login_resp.read()
+
+        conn.request("GET", "/download/payload.bin", headers={"Cookie": cookie} if cookie else {})
+        dl_resp = conn.getresponse()
+        assert dl_resp.status == 200
+        downloaded = dl_resp.read()
+        assert downloaded == payload
+
+        # 3. Stop transfer via /api/sender/stop
+        conn.request("POST", "/api/sender/stop")
+        stop_resp = conn.getresponse()
+        assert stop_resp.status == 204
+        stop_resp.read()
+
+        # 4. Verify staged directory was immediately cleaned up
+        remaining = [d for d in staged_root.iterdir() if d.is_dir()]
+        assert len(remaining) == 0
+
+    finally:
+        server.shutdown()
+        server.server_close()

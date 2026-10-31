@@ -14,7 +14,7 @@ from .config import Config
 
 
 def is_pid_alive(pid: int) -> bool:
-    """Check whether a process with the given PID is currently alive."""
+    """Check whether a process with the given PID is currently alive across all platforms."""
     if pid <= 0:
         return False
     if sys.platform == "win32":
@@ -25,6 +25,11 @@ def is_pid_alive(pid: int) -> bool:
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
             h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
             if h:
+                exit_code = ctypes.c_ulong()
+                # 259 is STILL_ACTIVE
+                if kernel32.GetExitCodeProcess(h, ctypes.byref(exit_code)):
+                    kernel32.CloseHandle(h)
+                    return exit_code.value == 259
                 kernel32.CloseHandle(h)
                 return True
             return False
@@ -37,6 +42,42 @@ def is_pid_alive(pid: int) -> bool:
     except OSError:
         return False
     return True
+
+
+def is_subpath(child: Path, parent: Path) -> bool:
+    """Check if child path is strictly inside parent path, cross-platform."""
+    try:
+        c = child.resolve()
+        p = parent.resolve()
+        if sys.platform == "win32":
+            c_str = str(c).lower().replace("/", "\\")
+            p_str = str(p).lower().replace("/", "\\")
+            if not p_str.endswith("\\"):
+                p_str += "\\"
+            return c_str.startswith(p_str) and c_str != p_str.rstrip("\\")
+        else:
+            c.relative_to(p)
+            return c != p
+    except (ValueError, OSError):
+        return False
+
+
+def remove_dir_force(path: Path):
+    """Safely and recursively remove a directory, handling read-only files on Windows."""
+
+    def _handle_remove_readonly(func, p, excinfo):
+        try:
+            import stat
+
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+
+    try:
+        shutil.rmtree(path, onerror=_handle_remove_readonly)
+    except Exception:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def cleanup_stale_staging_dirs(force: bool = False) -> int:
@@ -62,8 +103,7 @@ def cleanup_stale_staging_dirs(force: bool = False) -> int:
             try:
                 resolved_entry = entry.resolve()
                 # Security guarantee: must be strictly inside Config.CONFIG_DIR / "staged"
-                resolved_entry.relative_to(staged_root)
-                if resolved_entry == staged_root:
+                if not is_subpath(resolved_entry, staged_root):
                     continue
 
                 should_delete = force
@@ -93,7 +133,7 @@ def cleanup_stale_staging_dirs(force: bool = False) -> int:
                                     reclaimed_bytes += os.path.getsize(os.path.join(root, f))
                                 except OSError:
                                     pass
-                        shutil.rmtree(resolved_entry, ignore_errors=True)
+                        remove_dir_force(resolved_entry)
                     elif resolved_entry.is_file():
                         try:
                             reclaimed_bytes += resolved_entry.stat().st_size
@@ -184,9 +224,7 @@ class SenderSync:
             # Remove staged file paths from active list while preserving original user files
             new_paths = []
             for fp in self.file_paths:
-                try:
-                    Path(fp).resolve().relative_to(staged_root)
-                except ValueError:
+                if not is_subpath(Path(fp), staged_root):
                     new_paths.append(fp)
             self.file_paths = new_paths
 
@@ -197,9 +235,7 @@ class SenderSync:
             if FileTransferHandler.file_paths:
                 new_fth_paths = []
                 for fp in FileTransferHandler.file_paths:
-                    try:
-                        Path(fp).resolve().relative_to(staged_root)
-                    except ValueError:
+                    if not is_subpath(Path(fp), staged_root):
                         new_fth_paths.append(fp)
                 FileTransferHandler.file_paths = new_fth_paths or None
         except Exception:
@@ -209,12 +245,8 @@ class SenderSync:
             try:
                 p = Path(d).resolve()
                 # Security: ONLY delete paths that are strictly subdirectories of CONFIG_DIR/staged
-                try:
-                    p.relative_to(staged_root)
-                    if p != staged_root and p.exists() and p.is_dir():
-                        shutil.rmtree(p, ignore_errors=True)
-                except ValueError:
-                    pass
+                if is_subpath(p, staged_root) and p.exists() and p.is_dir():
+                    remove_dir_force(p)
             except Exception:
                 pass
 
