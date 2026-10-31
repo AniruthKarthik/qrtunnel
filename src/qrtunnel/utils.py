@@ -149,20 +149,37 @@ def _get_linux_interface_ips():
     return ips
 
 
+def _get_darwin_interface_ips():
+    ips = []
+    for iface in ("en0", "en1", "en2", "en3", "en4"):
+        try:
+            result = subprocess.run(
+                ["ipconfig", "getifaddr", iface],
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+            ip = result.stdout.strip()
+            if ip and _is_usable_lan_ip(ip):
+                ips.append(ip)
+        except Exception:
+            pass
+    return ips
+
+
 def get_lan_ip():
     if platform.system() == "Linux":
         interface_ips = _get_linux_interface_ips()
         if interface_ips:
             return interface_ips[0]
 
-    try:
-        hostname = socket.gethostname()
-        for ip in socket.gethostbyname_ex(hostname)[2]:
-            if _is_usable_lan_ip(ip):
-                return str(ip)
-    except Exception:
-        pass
+    if platform.system() == "Darwin":
+        interface_ips = _get_darwin_interface_ips()
+        if interface_ips:
+            return interface_ips[0]
 
+    # Fast UDP routing table probe: kernel resolves local interface IP in <0.1ms without DNS
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
@@ -173,6 +190,16 @@ def get_lan_ip():
             return str(ip)
     except Exception:
         pass
+
+    # Fallback to hostname resolution if UDP routing probe is unavailable (e.g. offline)
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if _is_usable_lan_ip(ip):
+                return str(ip)
+    except Exception:
+        pass
+
     return None
 
 

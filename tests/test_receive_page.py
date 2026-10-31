@@ -23,6 +23,7 @@ def create_handler(path="/receive", method="GET", body=b"", client_ip="127.0.0.1
     handler.send_response = MagicMock()
     handler.send_header = MagicMock()
     handler.end_headers = MagicMock()
+    handler.server_lan_ip = "192.168.1.10"
     return handler
 
 
