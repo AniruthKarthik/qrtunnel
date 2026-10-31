@@ -305,10 +305,14 @@ def test_end_to_end_web_ui_transfer_and_cleanup(temp_config_dir):
         payload = b"QRTUNNEL_TEST_DATA_" * (32 * 1024)
         boundary = "----TestBoundaryCrossPlatform"
         body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="file"; filename="payload.bin"\r\n'
-            f"Content-Type: application/octet-stream\r\n\r\n"
-        ).encode() + payload + f"\r\n--{boundary}--\r\n".encode()
+            (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="file"; filename="payload.bin"\r\n'
+                f"Content-Type: application/octet-stream\r\n\r\n"
+            ).encode()
+            + payload
+            + f"\r\n--{boundary}--\r\n".encode()
+        )
 
         conn = http.client.HTTPConnection("127.0.0.1", test_port)
         headers = {
@@ -329,7 +333,12 @@ def test_end_to_end_web_ui_transfer_and_cleanup(temp_config_dir):
         assert staged_file.stat().st_size == len(payload)
 
         # 2. Authenticate and download file as client
-        conn.request("POST", "/login", body="password=9876", headers={"Content-Type": "application/x-www-form-urlencoded"})
+        conn.request(
+            "POST",
+            "/login",
+            body="password=9876",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
         login_resp = conn.getresponse()
         cookie = login_resp.getheader("Set-Cookie")
         login_resp.read()

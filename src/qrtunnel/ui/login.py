@@ -6,11 +6,7 @@ from .theme import BAUHAUS_CSS, ICONS
 
 def render_login_page(error: str = None) -> str:
     error_html = (
-        f'<div class="error-banner">'
-        f'<span class="error-pip">!</span> {error}'
-        f'</div>'
-        if error
-        else ""
+        f'<div class="error-banner"><span class="error-pip">!</span> {error}</div>' if error else ""
     )
 
     html = f"""<!DOCTYPE html>
@@ -148,7 +144,7 @@ h1 {{
 <body>
 <div class="login-frame">
     <div class="brand-badge">
-        {ICONS['lock']}
+        {ICONS["lock"]}
     </div>
     <div class="micro-label" style="margin-bottom: 6px;">Security // Access Verification</div>
     <h1>Security Check</h1>

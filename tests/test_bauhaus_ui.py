@@ -108,7 +108,7 @@ def test_dashboard_renders_bauhaus_design_tokens():
     assert 'id="panel-history"' in html
     assert 'id="panel-settings"' not in html
     assert 'id="history-tbody"' in html
-    assert 'clearHistoryLogs' in html
+    assert "clearHistoryLogs" in html
 
 
 def test_api_history_endpoint(tmp_path):
@@ -179,7 +179,7 @@ def test_download_page_bauhaus_design(tmp_path):
     assert "Download Files" in html
     assert "song.mp3" in html
     assert 'class="file-cb"' in html
-    assert 'dl-single-btn' in html
+    assert "dl-single-btn" in html
     assert 'id="select-all-btn"' in html
     assert 'id="download-selected-btn"' in html
     assert 'id="progress-container"' in html

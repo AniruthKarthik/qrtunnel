@@ -219,7 +219,8 @@ def test_sender_api_share_multiple_files(tmp_path):
     assert len(sender_sync.file_paths) == 2
 
 
-def test_browser_launch_and_safe_close():
+def test_browser_launch_and_safe_close(monkeypatch):
+    monkeypatch.setenv("DISPLAY", ":0")
     with patch("shutil.which", return_value="/usr/bin/mock-browser"):
         with patch("subprocess.Popen") as mock_popen:
             mock_proc = MagicMock()
@@ -230,11 +231,24 @@ def test_browser_launch_and_safe_close():
             assert proc is mock_proc
             mock_popen.assert_called_once()
             args = mock_popen.call_args[0][0]
-            assert "http://127.0.0.1:6969/sender" in args or "--app=http://127.0.0.1:6969/sender" in args or "--new-window" in args
+            assert (
+                "http://127.0.0.1:6969/sender" in args
+                or "--app=http://127.0.0.1:6969/sender" in args
+                or "--new-window" in args
+            )
 
             # close_browser_window is a safe no-op to prevent closing other tabs
             close_browser_window()
             mock_proc.terminate.assert_not_called()
+
+
+def test_browser_launch_headless_linux(monkeypatch):
+    """Verify launch_browser_window returns None on headless Linux (no DISPLAY or WAYLAND)."""
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    with patch("platform.system", return_value="Linux"):
+        proc = launch_browser_window("http://127.0.0.1:6969/sender")
+        assert proc is None
 
 
 def test_parse_args_direct_and_tui(monkeypatch):
@@ -438,4 +452,3 @@ def test_check_auth_exempts_receiver_session_endpoints():
     handler2.client_address = ("192.168.1.105", 54321)
     handler2.authorized_sessions = set()
     assert handler2.check_auth() is True
-

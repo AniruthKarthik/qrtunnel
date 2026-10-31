@@ -103,10 +103,14 @@ def test_upload_on_the_fly_hashing(tmp_path):
     file_content = b"Performance engineering test content 999"
     boundary = "----TestBoundary123"
     payload = (
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="file"; filename="upload_test.txt"\r\n'
-        "Content-Type: text/plain\r\n\r\n"
-    ).encode() + file_content + f"\r\n--{boundary}--\r\n".encode()
+        (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="file"; filename="upload_test.txt"\r\n'
+            "Content-Type: text/plain\r\n\r\n"
+        ).encode()
+        + file_content
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
 
     headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
     parser = StreamingFormDataParser(headers=headers)

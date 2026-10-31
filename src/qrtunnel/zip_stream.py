@@ -68,9 +68,7 @@ def calculate_zip_size(entries: List[StreamingZipEntry]) -> int:
     cd_total_size = 0
 
     is_overall_zip64 = (
-        len(entries) >= 0xFFFF
-        or cd_start_offset >= 0xFFFFFFFF
-        or any(e.is_zip64 for e in entries)
+        len(entries) >= 0xFFFF or cd_start_offset >= 0xFFFFFFFF or any(e.is_zip64 for e in entries)
     )
 
     for entry in entries:
@@ -122,35 +120,42 @@ def stream_zip_archive(
         if entry.is_zip64:
             # Zip64 extra field: ID 0x0001, size 16
             extra = struct.pack("<HHQQ", 0x0001, 16, 0, 0)
-            local_hdr = struct.pack(
-                "<4sHHHHHIIIHH",
-                b"PK\x03\x04",
-                version_needed,
-                flags,
-                0,  # STORED
-                0,
-                0,  # mod time, mod date
-                0,
-                0xFFFFFFFF,
-                0xFFFFFFFF,
-                name_len,
-                len(extra),
-            ) + name_bytes + extra
+            local_hdr = (
+                struct.pack(
+                    "<4sHHHHHIIIHH",
+                    b"PK\x03\x04",
+                    version_needed,
+                    flags,
+                    0,  # STORED
+                    0,
+                    0,  # mod time, mod date
+                    0,
+                    0xFFFFFFFF,
+                    0xFFFFFFFF,
+                    name_len,
+                    len(extra),
+                )
+                + name_bytes
+                + extra
+            )
         else:
-            local_hdr = struct.pack(
-                "<4sHHHHHIIIHH",
-                b"PK\x03\x04",
-                version_needed,
-                flags,
-                0,  # STORED
-                0,
-                0,  # mod time, mod date
-                0,
-                0,
-                0,
-                name_len,
-                0,
-            ) + name_bytes
+            local_hdr = (
+                struct.pack(
+                    "<4sHHHHHIIIHH",
+                    b"PK\x03\x04",
+                    version_needed,
+                    flags,
+                    0,  # STORED
+                    0,
+                    0,  # mod time, mod date
+                    0,
+                    0,
+                    0,
+                    name_len,
+                    0,
+                )
+                + name_bytes
+            )
 
         out_stream.write(local_hdr)
         total_sent += len(local_hdr)
@@ -188,47 +193,54 @@ def stream_zip_archive(
         if entry.is_zip64 or is_overall_zip64:
             # Zip64 extra field in CD: ID 0x0001, size 24 (uncomp, comp, offset)
             cd_extra = struct.pack("<HHQQQ", 0x0001, 24, entry.size, entry.size, local_offset)
-            cd_hdr = struct.pack(
-                "<4sHHHHHHIIIHHHHHII",
-                b"PK\x01\x02",
-                45,  # version made by
-                45,  # version needed
-                flags,
-                0,
-                0,
-                0,
-                crc,
-                0xFFFFFFFF,
-                0xFFFFFFFF,
-                name_len,
-                len(cd_extra),
-                0,  # comment len
-                0,  # disk num
-                0,  # internal attr
-                0,  # external attr
-                0xFFFFFFFF,
-            ) + name_bytes + cd_extra
+            cd_hdr = (
+                struct.pack(
+                    "<4sHHHHHHIIIHHHHHII",
+                    b"PK\x01\x02",
+                    45,  # version made by
+                    45,  # version needed
+                    flags,
+                    0,
+                    0,
+                    0,
+                    crc,
+                    0xFFFFFFFF,
+                    0xFFFFFFFF,
+                    name_len,
+                    len(cd_extra),
+                    0,  # comment len
+                    0,  # disk num
+                    0,  # internal attr
+                    0,  # external attr
+                    0xFFFFFFFF,
+                )
+                + name_bytes
+                + cd_extra
+            )
         else:
-            cd_hdr = struct.pack(
-                "<4sHHHHHHIIIHHHHHII",
-                b"PK\x01\x02",
-                20,
-                20,
-                flags,
-                0,
-                0,
-                0,
-                crc,
-                entry.size,
-                entry.size,
-                name_len,
-                0,
-                0,
-                0,
-                0,
-                0,
-                local_offset,
-            ) + name_bytes
+            cd_hdr = (
+                struct.pack(
+                    "<4sHHHHHHIIIHHHHHII",
+                    b"PK\x01\x02",
+                    20,
+                    20,
+                    flags,
+                    0,
+                    0,
+                    0,
+                    crc,
+                    entry.size,
+                    entry.size,
+                    name_len,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    local_offset,
+                )
+                + name_bytes
+            )
 
         cd_entries.append(cd_hdr)
 

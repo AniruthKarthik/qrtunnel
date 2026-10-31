@@ -111,7 +111,9 @@ def test_handle_receiver_mode_switch_to_cloudflare():
     sender_sync.initialize(port=6969, pin="1234", lan_ip="192.168.1.10")
 
     handler = create_handler(path="/api/receiver/mode?mode=Cloudflare&port=6969", method="POST")
-    fake_cf = FakeTunnel(6969, "cloudflared", url="https://mock-cf.trycloudflare.com", succeeds=True)
+    fake_cf = FakeTunnel(
+        6969, "cloudflared", url="https://mock-cf.trycloudflare.com", succeeds=True
+    )
 
     with patch("qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf):
         handler.handle_receiver_mode()
@@ -163,7 +165,9 @@ def test_handle_receiver_mode_lan_fallback_when_no_lan():
     handler = create_handler(path="/api/receiver/mode?mode=LAN&port=6969", method="POST")
     handler.server_lan_ip = None
 
-    fake_cf = FakeTunnel(6969, "cloudflared", url="https://auto-fallback.trycloudflare.com", succeeds=True)
+    fake_cf = FakeTunnel(
+        6969, "cloudflared", url="https://auto-fallback.trycloudflare.com", succeeds=True
+    )
 
     with patch("qrtunnel.server.get_lan_ip", return_value=None):
         with patch("qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf):
@@ -243,11 +247,15 @@ def test_file_transfer_handler_handle_and_finish_catch_broken_pipe():
     mock_instance.close_connection = False
 
     # Calling finish with BrokenPipeError on super().finish() should not raise
-    with patch("http.server.BaseHTTPRequestHandler.finish", side_effect=BrokenPipeError("Broken pipe")):
+    with patch(
+        "http.server.BaseHTTPRequestHandler.finish", side_effect=BrokenPipeError("Broken pipe")
+    ):
         FileTransferHandler.finish(mock_instance)
 
     # Calling handle with BrokenPipeError on super().handle() should set close_connection
-    with patch("http.server.BaseHTTPRequestHandler.handle", side_effect=BrokenPipeError("Broken pipe")):
+    with patch(
+        "http.server.BaseHTTPRequestHandler.handle", side_effect=BrokenPipeError("Broken pipe")
+    ):
         FileTransferHandler.handle(mock_instance)
         assert mock_instance.close_connection is True
 
@@ -275,4 +283,3 @@ def test_upload_page_contains_xhr_open_and_form_action():
     assert "xhr.open('POST', '/upload', true);" in html
     assert 'action="/upload"' in html
     assert 'id="upload-form"' in html
-

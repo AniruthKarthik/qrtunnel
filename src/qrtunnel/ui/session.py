@@ -1,5 +1,6 @@
 """Bauhaus Session Management - Session closed notification overlay and polling/SSE watcher."""
 
+
 def render_receiver_session_script() -> str:
     return """<script>
 (function() {
@@ -74,4 +75,3 @@ def render_receiver_session_script() -> str:
     }, 3000);
 })();
 </script>"""
-

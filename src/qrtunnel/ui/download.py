@@ -22,7 +22,7 @@ def render_download_page(file_paths: List[str]) -> str:
     <input type="checkbox" class="file-cb" id="cb-{idx}" data-idx="{idx}" data-name="{fn}">
   </div>
   <label for="cb-{idx}" class="file-info" title="Select {display_name}">
-    <span class="file-icon-box">{ICONS['file']}</span>
+    <span class="file-icon-box">{ICONS["file"]}</span>
     <span class="file-name mono">{display_name}</span>
   </label>
   <div class="file-meta">
@@ -36,14 +36,17 @@ def render_download_page(file_paths: List[str]) -> str:
     file_count = len(file_paths or [])
     file_count_str = f"{file_count} {'FILE' if file_count == 1 else 'FILES'}"
 
-    html = """<!DOCTYPE html>
+    html = (
+        """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>QRTunnel — Download Files</title>
 <style>
-""" + BAUHAUS_CSS + """
+"""
+        + BAUHAUS_CSS
+        + """
 
 body {
     display: flex;
@@ -320,7 +323,9 @@ h1 {
 <div class="download-frame">
     <div class="header-block">
         <div class="brand-badge">
-            """ + ICONS['receive'] + """
+            """
+        + ICONS["receive"]
+        + """
         </div>
         <div class="micro-label" style="margin-bottom: 6px;">Sender Mode // File Manifest</div>
         <h1>Download Files</h1>
@@ -332,10 +337,14 @@ h1 {
             <button type="button" id="select-all-btn" class="select-btn">Select All</button>
             <span class="micro-label">Available Files</span>
         </div>
-        <span class="file-count-badge mono">""" + file_count_str + """</span>
+        <span class="file-count-badge mono">"""
+        + file_count_str
+        + """</span>
     </div>
 
-    <ul class="file-list">""" + file_list_html + """</ul>
+    <ul class="file-list">"""
+        + file_list_html
+        + """</ul>
 
     <div id="progress-container" class="progress-container">
         <div class="progress-status" id="progress-status">
@@ -353,7 +362,9 @@ h1 {
     </div>
 
     <button type="button" id="download-selected-btn" class="selected-button" style="display:none;">
-        """ + ICONS['check'] + """
+        """
+        + ICONS["check"]
+        + """
         <span id="selected-btn-text">Download Selected (.zip)</span>
     </button>
 
@@ -437,7 +448,10 @@ if (dlSelectedBtn) {
     });
 }
 </script>
-""" + render_receiver_session_script() + """
+"""
+        + render_receiver_session_script()
+        + """
 </body>
 </html>"""
+    )
     return html

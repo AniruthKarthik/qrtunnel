@@ -68,9 +68,7 @@ def launch_server(
         noauth_mode = True
     else:  # LAN
         noauth_mode = True
-    tunnel_backend = (
-        mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
-    )
+    tunnel_backend = mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
 
     # ── banner ──
     print("\n" + "=" * 60)
@@ -321,9 +319,7 @@ Examples:
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # TUI command (only 'qrtunnel tui' triggers the terminal TUI)
-    p_tui = subparsers.add_parser(
-        "tui", help="Start interactive terminal TUI"
-    )
+    p_tui = subparsers.add_parser("tui", help="Start interactive terminal TUI")
 
     # SEND command
     p_send = subparsers.add_parser("send", help="Share files or directories with others")

@@ -19,14 +19,17 @@ def render_dashboard(
     pin_padded = pin_str.ljust(4, "-")
     pin_d0, pin_d1, pin_d2, pin_d3 = pin_padded[0], pin_padded[1], pin_padded[2], pin_padded[3]
 
-    html = """<!DOCTYPE html>
+    html = (
+        """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>qrtunnel - Sender & Receiver — Bauhaus Edition</title>
 <style>
-""" + BAUHAUS_CSS + """
+"""
+        + BAUHAUS_CSS
+        + """
 
 body {
     display: flex;
@@ -1100,29 +1103,41 @@ body {
     <div class="top-bar">
         <div class="brand-unit">
             <a href="https://github.com/AniruthKarthik/qrtunnel" target="_blank" rel="noopener noreferrer" class="brand-emblem-box" title="QRTunnel on GitHub (AniruthKarthik/qrtunnel)">
-                """ + ICONS['brand_emblem'] + """
+                """
+        + ICONS["brand_emblem"]
+        + """
             </a>
             <span class="brand-name">QRTunnel</span>
-            <span class="version-tag mono">v""" + __version__ + """</span>
+            <span class="version-tag mono">v"""
+        + __version__
+        + """</span>
         </div>
         <div class="system-status mono">
             <span class="status-pip"></span>
-            <span>READY // """ + (f"LAN: {current_lan_ip}:{port_val}" if has_lan else f"PORT {port_val}") + """</span>
+            <span>READY // """
+        + (f"LAN: {current_lan_ip}:{port_val}" if has_lan else f"PORT {port_val}")
+        + """</span>
         </div>
     </div>
 
     <!-- Segmented Tab Bar -->
     <div class="nav-row">
         <a href="/sender" class="nav-tab active" id="tab-btn-send" onclick="switchMainTab('send'); return false;">
-            """ + ICONS['send'] + """
+            """
+        + ICONS["send"]
+        + """
             <span>Send Files</span>
         </a>
         <a href="/receive" class="nav-tab" id="tab-btn-receive" onclick="switchMainTab('receive'); return false;">
-            """ + ICONS['receive'] + """
+            """
+        + ICONS["receive"]
+        + """
             <span>Receive Files</span>
         </a>
         <button type="button" class="nav-tab" id="tab-btn-history" onclick="switchMainTab('history');">
-            """ + ICONS['history'] + """
+            """
+        + ICONS["history"]
+        + """
             <span>History</span>
         </button>
     </div>
@@ -1143,7 +1158,9 @@ body {
                     <div class="dropzone file-drop-area" id="drop-area">
                         <input type="file" id="file-input" multiple>
                         <div class="dropzone-icon">
-                            """ + ICONS['file'] + """
+                            """
+        + ICONS["file"]
+        + """
                         </div>
                         <p class="dropzone-title" id="drop-text">Click or drag files here</p>
                         <p class="dropzone-hint">Select one or multiple files to send</p>
@@ -1225,7 +1242,9 @@ body {
                             </div>
                             <div class="meta-item">
                                 <span class="meta-label">Port</span>
-                                <span class="meta-val" id="active-meta-port">""" + port_val + """</span>
+                                <span class="meta-val" id="active-meta-port">"""
+        + port_val
+        + """</span>
                             </div>
                             <div class="meta-item">
                                 <span class="meta-label">Security</span>
@@ -1233,7 +1252,11 @@ body {
                             </div>
                             <div class="meta-item">
                                 <span class="meta-label">Directory</span>
-                                <span class="meta-val" title='""" + cwd_name + """'>📁 """ + cwd_name + """</span>
+                                <span class="meta-val" title='"""
+        + cwd_name
+        + """'>📁 """
+        + cwd_name
+        + """</span>
                             </div>
                         </div>
                     </div>
@@ -1253,7 +1276,9 @@ body {
                     <div class="access-code-block">
                         <div class="access-code-header">
                             <div class="access-code-title">
-                                """ + ICONS['lock'] + """
+                                """
+        + ICONS["lock"]
+        + """
                                 <span>ACCESS CODE</span>
                             </div>
                             <span class="access-code-sub">Enter on receiver</span>
@@ -1269,7 +1294,9 @@ body {
 
                     <!-- URL Row -->
                     <div class="url-strip">
-                        """ + ICONS['link'] + """
+                        """
+        + ICONS["link"]
+        + """
                         <span class="url-text mono" id="target-url-text">http://...</span>
                         <button type="button" class="copy-btn" id="copy-btn">Copy Link</button>
                     </div>
@@ -1357,7 +1384,9 @@ body {
                 <div class="incoming-card">
                     <div class="incoming-topbar">
                         <span class="micro-label">Incoming Transfers</span>
-                        <span class="file-count-chip mono" title="Save directory">📁 """ + cwd_name + """</span>
+                        <span class="file-count-chip mono" title="Save directory">📁 """
+        + cwd_name
+        + """</span>
                     </div>
 
                     <!-- In-flight Upload Progress Card -->
@@ -1373,7 +1402,9 @@ body {
 
                     <ul class="manifest-list" id="received-list"></ul>
                     <div id="empty-state" class="empty-state">
-                        """ + ICONS['upload_cloud'] + """
+                        """
+        + ICONS["upload_cloud"]
+        + """
                         <span>No files received yet. Waiting for uploads...</span>
                     </div>
                 </div>
@@ -1389,7 +1420,9 @@ body {
                         <span id="rec-loading-text" class="micro-label">Connecting...</span>
                     </div>
                     <div class="qr-monolith">
-                        <div class="qr-wrapper" id="rec-qr-wrapper">""" + rec_init_qr_svg + """</div>
+                        <div class="qr-wrapper" id="rec-qr-wrapper">"""
+        + rec_init_qr_svg
+        + """</div>
                     </div>
                     <p class="scan-prompt">Scan with phone camera to open upload page</p>
 
@@ -1397,24 +1430,40 @@ body {
                     <div class="access-code-block">
                         <div class="access-code-header">
                             <div class="access-code-title">
-                                """ + ICONS['lock'] + """
+                                """
+        + ICONS["lock"]
+        + """
                                 <span>ACCESS CODE</span>
                             </div>
                             <span class="access-code-sub">Enter on phone</span>
                         </div>
                         <div class="digit-boxes">
-                            <div class="digit-box mono" id="rec-d-0">""" + pin_d0 + """</div>
-                            <div class="digit-box mono" id="rec-d-1">""" + pin_d1 + """</div>
-                            <div class="digit-box mono" id="rec-d-2">""" + pin_d2 + """</div>
-                            <div class="digit-box mono" id="rec-d-3">""" + pin_d3 + """</div>
-                            <span id="pin-display" class="pin-hidden">""" + pin_str + """</span>
+                            <div class="digit-box mono" id="rec-d-0">"""
+        + pin_d0
+        + """</div>
+                            <div class="digit-box mono" id="rec-d-1">"""
+        + pin_d1
+        + """</div>
+                            <div class="digit-box mono" id="rec-d-2">"""
+        + pin_d2
+        + """</div>
+                            <div class="digit-box mono" id="rec-d-3">"""
+        + pin_d3
+        + """</div>
+                            <span id="pin-display" class="pin-hidden">"""
+        + pin_str
+        + """</span>
                         </div>
                     </div>
 
                     <!-- URL Row -->
                     <div class="url-strip">
-                        """ + ICONS['link'] + """
-                        <span class="url-text mono" id="rec-target-url-text">""" + rec_init_url + """</span>
+                        """
+        + ICONS["link"]
+        + """
+                        <span class="url-text mono" id="rec-target-url-text">"""
+        + rec_init_url
+        + """</span>
                         <button type="button" class="copy-btn" id="rec-copy-btn">Copy Link</button>
                     </div>
                 </div>
@@ -1551,7 +1600,9 @@ function updateFileList() {
             const li = document.createElement('li');
             li.innerHTML = `
               <div class="manifest-item-left">
-                """ + ICONS['file'] + """
+                """
+        + ICONS["file"]
+        + """
                 <span class="manifest-name mono" title="${file.name}">${file.name}</span>
               </div>
               <div class="manifest-meta">
@@ -1791,7 +1842,9 @@ function switchToActiveView(data) {
         const li = document.createElement('li');
         li.innerHTML = `
           <div class="manifest-item-left">
-            """ + ICONS['file'] + """
+            """
+        + ICONS["file"]
+        + """
             <span class="manifest-name mono" title="${f.name}">${f.name}</span>
           </div>
           <div class="manifest-meta">
@@ -1884,7 +1937,9 @@ function renderReceivedFiles(files) {
             const li = document.createElement('li');
             li.innerHTML = `
               <div class="manifest-item-left">
-                """ + ICONS['check'] + """
+                """
+        + ICONS["check"]
+        + """
                 <span class="manifest-name mono" title="${f.name}">${f.name}</span>
               </div>
               <div class="manifest-meta">
@@ -1900,7 +1955,9 @@ function addReceivedFile(f) {
     const li = document.createElement('li');
     li.innerHTML = `
       <div class="manifest-item-left">
-        """ + ICONS['check'] + """
+        """
+        + ICONS["check"]
+        + """
         <span class="manifest-name mono" title="${f.name}">${f.name}</span>
       </div>
       <div class="manifest-meta">
@@ -1971,7 +2028,9 @@ function showSessionEnded() {
     document.body.innerHTML = `
       <div class="app-frame" style="max-width:480px;margin:40px auto;text-align:center;padding:48px 32px;">
         <div class="brand-emblem-box" style="margin:0 auto 16px;">
-          """ + ICONS['stop'] + """
+          """
+        + ICONS["stop"]
+        + """
         </div>
         <div class="micro-label" style="margin-bottom:6px;">SESSION COMPLETED</div>
         <h1 style="font-size:22px;font-weight:800;color:var(--bh-ink);margin-bottom:8px;">Session Ended</h1>
@@ -2166,6 +2225,7 @@ evtSource.addEventListener('close', () => {
 </script>
 </body>
 </html>"""
+    )
 
     html = (
         html.replace("__INITIAL_STATE__", initial_state_json)

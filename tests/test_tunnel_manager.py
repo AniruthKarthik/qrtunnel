@@ -131,4 +131,3 @@ def test_cloudflare_tunnel_edge_registration_and_failure_detection():
     assert cf_fail.url_found.is_set()
     assert cf_fail.connection_failed.is_set()
     assert not cf_fail.connection_registered.is_set()
-

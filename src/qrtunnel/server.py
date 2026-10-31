@@ -80,7 +80,9 @@ class ActiveTransferTracker:
             key = (client_ip, str(path))
             if key in self._transfers:
                 self._transfers[key]["sent"] += n_bytes
-                return min(self._transfers[key]["file_size"], self._transfers[key]["sent"]), self._transfers[key]["file_size"]
+                return min(
+                    self._transfers[key]["file_size"], self._transfers[key]["sent"]
+                ), self._transfers[key]["file_size"]
             return n_bytes, 0
 
     def finish_stream(self, client_ip, path):
@@ -187,7 +189,11 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
         exc_type, exc_val, _ = sys.exc_info()
         if exc_type in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
-        if isinstance(exc_val, (socket.error, OSError)) and getattr(exc_val, "errno", None) in (32, 104, 107):
+        if isinstance(exc_val, (socket.error, OSError)) and getattr(exc_val, "errno", None) in (
+            32,
+            104,
+            107,
+        ):
             return
         super().handle_error(request, client_address)
 
@@ -228,6 +234,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 raise
         except Exception:
             pass
+
     protocol_version = "HTTP/1.1"
     wbufsize = 65536
     file_paths = None
@@ -258,9 +265,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             "/ping",
             "/api/session/status",
             "/api/receiver/events",
-        ) or self.path.startswith(
-            ("/ping?", "/api/session/status?", "/api/receiver/events?")
-        ):
+        ) or self.path.startswith(("/ping?", "/api/session/status?", "/api/receiver/events?")):
             return True
         # Allow token in query parameter for seamless transition from Tunnel to LAN
         try:
@@ -404,8 +409,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 self.send_sender_page()
                 return
             if parsed_path.path in ("/receive", "/receive/", "/receive.html") or (
-                parsed_path.path in ("/", "/index.html")
-                and self.upload_mode
+                parsed_path.path in ("/", "/index.html") and self.upload_mode
             ):
                 self.send_receive_page()
                 return
@@ -626,16 +630,13 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     def send_unified_web_ui(self, default_tab="send"):
         current_lan_ip = self.server_lan_ip or get_lan_ip()
         has_lan = bool(
-            current_lan_ip
-            and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
+            current_lan_ip and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
         )
         pin_str = str(Config.OTP or "----")
         port_val = str(Config.LOCAL_PORT or 6969)
         rec_init_mode = "LAN" if has_lan else "Cloudflare"
         rec_init_url = (
-            f"http://{current_lan_ip}:{port_val}"
-            if has_lan
-            else f"http://localhost:{port_val}"
+            f"http://{current_lan_ip}:{port_val}" if has_lan else f"http://localhost:{port_val}"
         )
         rec_init_qr_svg = generate_qr_svg(rec_init_url)
 
@@ -689,6 +690,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def handle_history(self):
         from .history import load_history
+
         entries = load_history()
         resp = json.dumps({"history": entries}).encode("utf-8")
         self.send_response(200)
@@ -700,6 +702,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def handle_history_clear(self):
         from .history import clear_history
+
         clear_history()
         resp = json.dumps({"success": True}).encode("utf-8")
         self.send_response(200)
@@ -741,9 +744,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             if port != Config.LOCAL_PORT:
                 try:
                     new_server = ThreadingHTTPServer(("0.0.0.0", port), FileTransferHandler)
-                    new_thread = threading.Thread(
-                        target=new_server.serve_forever, daemon=True
-                    )
+                    new_thread = threading.Thread(target=new_server.serve_forever, daemon=True)
                     new_thread.start()
                     sender_sync.register_server(new_server)
                     Config.LOCAL_PORT = port
@@ -755,8 +756,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
             current_lan_ip = self.server_lan_ip or get_lan_ip()
             has_lan = bool(
-                current_lan_ip
-                and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
+                current_lan_ip and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
             )
 
             lan_notice = None
@@ -785,9 +785,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
             if mode_name != "LAN":
                 tunnel_backend = (
-                    mode_name.lower()
-                    if mode_name in ("Cloudflare", "Ngrok", "SSH")
-                    else None
+                    mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
                 )
                 noauth = mode_name != "Ngrok"
                 tm = TunnelManager(
@@ -803,10 +801,16 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                     if tm.public_url:
                         target_url = tm.public_url
                         FileTransferHandler.public_url = tm.public_url
-                        if getattr(tm, "fell_back_to_ssh", False) is True and mode_name == "Cloudflare":
+                        if (
+                            getattr(tm, "fell_back_to_ssh", False) is True
+                            and mode_name == "Cloudflare"
+                        ):
                             mode_name = "SSH"
                             lan_notice = "Cloudflare unreachable (port 7844 blocked / Error 1033). Switched to SSH tunnel."
-                        elif getattr(tm, "fell_back_to_cloudflare", False) is True and mode_name == "SSH":
+                        elif (
+                            getattr(tm, "fell_back_to_cloudflare", False) is True
+                            and mode_name == "SSH"
+                        ):
                             mode_name = "Cloudflare"
                             lan_notice = "SSH tunnel unavailable. Switched to Cloudflare tunnel."
                     else:
@@ -1152,8 +1156,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
             current_lan_ip = self.server_lan_ip or get_lan_ip()
             has_lan = bool(
-                current_lan_ip
-                and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
+                current_lan_ip and current_lan_ip not in ("None", "127.0.0.1", "localhost", "")
             )
 
             lan_notice = None
@@ -1175,9 +1178,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             target_url = lan_url
             if mode_name != "LAN":
                 tunnel_backend = (
-                    mode_name.lower()
-                    if mode_name in ("Cloudflare", "Ngrok", "SSH")
-                    else None
+                    mode_name.lower() if mode_name in ("Cloudflare", "Ngrok", "SSH") else None
                 )
                 noauth = mode_name != "Ngrok"
                 if sender_sync.tunnel_manager:
@@ -1210,10 +1211,16 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                     if tm.public_url:
                         target_url = tm.public_url
                         FileTransferHandler.public_url = tm.public_url
-                        if getattr(tm, "fell_back_to_ssh", False) is True and mode_name == "Cloudflare":
+                        if (
+                            getattr(tm, "fell_back_to_ssh", False) is True
+                            and mode_name == "Cloudflare"
+                        ):
                             mode_name = "SSH"
                             lan_notice = "Cloudflare unreachable (port 7844 blocked / Error 1033). Switched to SSH tunnel."
-                        elif getattr(tm, "fell_back_to_cloudflare", False) is True and mode_name == "SSH":
+                        elif (
+                            getattr(tm, "fell_back_to_cloudflare", False) is True
+                            and mode_name == "SSH"
+                        ):
                             mode_name = "Cloudflare"
                             lan_notice = "SSH tunnel unavailable. Switched to Cloudflare tunnel."
                     else:
@@ -1350,9 +1357,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             last_update = [0.0]
 
             def on_progress(sent, total):
-                last_update[0] = self.print_progress(
-                    label, sent, total, last_update=last_update[0]
-                )
+                last_update[0] = self.print_progress(label, sent, total, last_update=last_update[0])
 
             stream_zip_archive(
                 entries,
@@ -1465,9 +1470,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.flush()
             is_range = bool(range_req)
-            _transfer_tracker.start_stream(
-                self.client_address[0], target_path, file_size, is_range
-            )
+            _transfer_tracker.start_stream(self.client_address[0], target_path, file_size, is_range)
             try:
                 with open(target_path, "rb") as f:
                     if start > 0:
@@ -1476,7 +1479,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                         try:
                             sent = 0
                             last_update = 0
-                            chunk_size = 1048576  # 1 MB slice for high wire throughput & smooth progress
+                            chunk_size = (
+                                1048576  # 1 MB slice for high wire throughput & smooth progress
+                            )
                             while sent < content_length:
                                 to_send = min(chunk_size, content_length - sent)
                                 n = os.sendfile(
@@ -1530,9 +1535,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 )
 
             if is_last_stream:
-                self.print_progress(
-                    f"Download {filename}", file_size, file_size, force=True
-                )
+                self.print_progress(f"Download {filename}", file_size, file_size, force=True)
                 print()
                 print(f"{OK} File '{filename}' served to {self.client_address[0]}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")

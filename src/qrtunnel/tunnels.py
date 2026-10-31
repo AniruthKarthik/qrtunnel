@@ -532,12 +532,8 @@ class CloudflareTunnel:
                 time.sleep(0.2)
 
             if not self.connection_registered.is_set():
-                print(
-                    "[!] Cloudflare edge unreachable (port 7844 blocked or connection refused)."
-                )
-                print(
-                    "[!] Aborting Cloudflare tunnel to prevent Cloudflare Error 1033."
-                )
+                print("[!] Cloudflare edge unreachable (port 7844 blocked or connection refused).")
+                print("[!] Aborting Cloudflare tunnel to prevent Cloudflare Error 1033.")
                 self.stop()
                 return False
 
@@ -617,7 +613,9 @@ class TunnelManager:
             success = self._try_tunnel(CloudflareTunnel(self.local_port))
             if not success:
                 print("\n[!] Cloudflare tunnel failed (port 7844 blocked or Error 1033).")
-                print("[*] Automatically falling back to SSH tunnel (ports 22/443, no sign-up required)...")
+                print(
+                    "[*] Automatically falling back to SSH tunnel (ports 22/443, no sign-up required)..."
+                )
                 if self._try_tunnel(SSHTunnel(self.local_port)):
                     success = True
                     self.fell_back_to_ssh = True
@@ -664,4 +662,3 @@ class TunnelManager:
                 pass
             self.active_tunnel = None
         self.public_url = None
-

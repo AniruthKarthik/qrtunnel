@@ -5,14 +5,17 @@ from .theme import BAUHAUS_CSS, ICONS
 
 
 def render_upload_page() -> str:
-    html = """<!DOCTYPE html>
+    html = (
+        """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>QRTunnel — Send Files</title>
 <style>
-""" + BAUHAUS_CSS + """
+"""
+        + BAUHAUS_CSS
+        + """
 
 body {
     display: flex;
@@ -253,7 +256,9 @@ h1 {
 <div class="upload-frame">
     <div class="header-block">
         <div class="brand-badge">
-            """ + ICONS['upload_cloud'] + """
+            """
+        + ICONS["upload_cloud"]
+        + """
         </div>
         <div class="micro-label" style="margin-bottom: 6px;">Receiver Mode // Upload Portal</div>
         <h1>Send Files</h1>
@@ -264,7 +269,9 @@ h1 {
         <div class="drop-zone" id="drop-area">
             <input type="file" id="file-input" name="file" multiple required>
             <div class="drop-icon-box">
-                """ + ICONS['file'] + """
+                """
+        + ICONS["file"]
+        + """
             </div>
             <p class="drop-text" id="drop-text">Tap to select files</p>
             <p class="drop-hint">or drag and drop multiple files here</p>
@@ -419,7 +426,10 @@ uploadForm.addEventListener('submit', (e) => {
     xhr.send(formData);
 });
 </script>
-""" + render_receiver_session_script() + """
+"""
+        + render_receiver_session_script()
+        + """
 </body>
 </html>"""
+    )
     return html

@@ -29,7 +29,11 @@ def render_upload_success_page(files: Union[str, List[Any]]) -> str:
         subtitle = f"{total_files} files were successfully received on the host computer."
         items_html = ""
         for fn, sz in file_items:
-            sz_str = f' <span class="mono" style="color:var(--bh-ink-muted);font-weight:500;">({format_size(sz)})</span>' if sz is not None else ""
+            sz_str = (
+                f' <span class="mono" style="color:var(--bh-ink-muted);font-weight:500;">({format_size(sz)})</span>'
+                if sz is not None
+                else ""
+            )
             items_html += f'<li class="receipt-item"><span class="receipt-name mono">✓ {fn}</span>{sz_str}</li>'
         content_html = f'<ul class="receipt-list">{items_html}</ul>'
         btn_label = "Upload More Files"
@@ -170,7 +174,7 @@ h1 {{
 <body>
 <div class="success-frame">
     <div class="badge-emblem">
-        {ICONS['check']}
+        {ICONS["check"]}
     </div>
     <div class="micro-label" style="margin-bottom: 6px;">Transfer // Confirmed</div>
     <h1>Upload Complete</h1>
