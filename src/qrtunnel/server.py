@@ -257,9 +257,12 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             pass
         return now
 
+    def is_local_request(self):
+        return self.client_address[0] in ("127.0.0.1", "::1") and not self.is_tunnel_request()
+
     # ── auth ──
     def check_auth(self):
-        if self.client_address[0] in ("127.0.0.1", "::1"):
+        if self.is_local_request():
             return True
         if self.path in (
             "/ping",
@@ -357,10 +360,19 @@ class FileTransferHandler(BaseHTTPRequestHandler):
         return self.client_address[0]
 
     def is_tunnel_request(self):
-        return bool(
-            self.headers.get("CF-Connecting-IP")
-            or self.headers.get("X-Forwarded-For")
-            or self.headers.get("X-Real-IP")
+        host = self.headers.get("Host", "").split(":")[0].lower() if self.headers else ""
+        is_loopback_host = host in ("localhost", "127.0.0.1", "::1", "")
+        has_proxy_headers = (
+            bool(
+                self.headers.get("CF-Connecting-IP")
+                or self.headers.get("X-Forwarded-For")
+                or self.headers.get("X-Real-IP")
+            )
+            if self.headers
+            else False
+        )
+        return has_proxy_headers or (
+            bool(getattr(self, "public_url", None)) and not is_loopback_host
         )
 
     def is_request_from_same_lan(self):
@@ -397,7 +409,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     # ── routing ──
     def do_GET(self):
         parsed_path = urlparse(self.path)
-        is_local = self.client_address[0] in ("127.0.0.1", "::1")
+        is_local = self.is_local_request()
 
         # Sender & Receiver Web UI & API routes (local access)
         if is_local:
@@ -455,7 +467,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed_path = urlparse(self.path)
-        is_local = self.client_address[0] in ("127.0.0.1", "::1")
+        is_local = self.is_local_request()
 
         # Sender & Receiver API routes (local access)
         if is_local:

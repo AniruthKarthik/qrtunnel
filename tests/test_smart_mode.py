@@ -82,6 +82,26 @@ def test_is_tunnel_request():
     assert handler.is_tunnel_request() is False
 
 
+def test_check_auth_rejects_unauthenticated_tunnel_request():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+    handler.path = "/download/secret.pdf"
+    handler.headers = {"CF-Connecting-IP": "203.0.113.195"}
+    FileTransferHandler.authorized_sessions = set()
+    assert handler.check_auth() is False
+
+
+def test_is_local_request_rejects_tunnel_forwarded_traffic():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+    handler.headers = {"X-Forwarded-For": "198.51.100.1"}
+    handler.public_url = None
+    assert handler.is_local_request() is False
+
+    handler.headers = {}
+    assert handler.is_local_request() is True
+
+
 def test_get_upload_success_page_light_theme():
     handler = FileTransferHandler.__new__(FileTransferHandler)
     html = handler.get_upload_success_page("document.pdf")
