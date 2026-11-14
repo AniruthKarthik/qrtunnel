@@ -108,3 +108,19 @@ def test_get_upload_success_page_light_theme():
     assert "document.pdf" in html
     assert "#f8fafc" in html  # Light theme background
     assert "Upload Complete" in html
+
+
+def test_get_real_client_ip_validates_ip_format():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+
+    # Valid IPv4 and IPv6 forwarded headers
+    handler.headers = {"X-Forwarded-For": "203.0.113.195, 10.0.0.1"}
+    assert handler.get_real_client_ip() == "203.0.113.195"
+
+    handler.headers = {"CF-Connecting-IP": "2001:db8::1"}
+    assert handler.get_real_client_ip() == "2001:db8::1"
+
+    # Malicious XSS or non-IP input in header must be rejected and fall back to socket IP
+    handler.headers = {"X-Forwarded-For": "<script>alert(1)</script>"}
+    assert handler.get_real_client_ip() == "127.0.0.1"

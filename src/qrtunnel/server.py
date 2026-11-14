@@ -348,15 +348,17 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     # ── client network detection ──
     def get_real_client_ip(self):
-        cf_ip = self.headers.get("CF-Connecting-IP")
-        if cf_ip:
-            return cf_ip.strip()
-        xff = self.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0].strip()
-        x_real = self.headers.get("X-Real-IP")
-        if x_real:
-            return x_real.strip()
+        import ipaddress
+
+        for header in ("CF-Connecting-IP", "X-Forwarded-For", "X-Real-IP"):
+            val = self.headers.get(header)
+            if val:
+                candidate = val.split(",")[0].strip()
+                try:
+                    ipaddress.ip_address(candidate)
+                    return candidate
+                except ValueError:
+                    continue
         return self.client_address[0]
 
     def is_tunnel_request(self):

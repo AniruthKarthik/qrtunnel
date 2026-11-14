@@ -2101,9 +2101,9 @@ function renderHistoryRows(entries) {
         tr.innerHTML = `
             <td class="mono" style="color:var(--bh-ink-muted);font-size:11px;">${ts}</td>
             <td>${dirBadge}</td>
-            <td class="mono" style="font-weight:600;">${item.filename || '-'}</td>
+            <td class="mono" style="font-weight:600;">${escapeHtml(item.filename || '-')}</td>
             <td class="mono">${formatBytes(item.size || 0)}</td>
-            <td class="mono" style="color:var(--bh-ink-secondary);">${item.client_ip || '-'}</td>
+            <td class="mono" style="color:var(--bh-ink-secondary);">${escapeHtml(item.client_ip || '-')}</td>
         `;
         tbody.appendChild(tr);
     });
