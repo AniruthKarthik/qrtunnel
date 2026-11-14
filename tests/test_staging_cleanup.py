@@ -136,23 +136,29 @@ def test_cleanup_stale_staging_dirs_startup_gc(temp_config_dir):
     (active_dir / ".owner_pid").write_text("88888")
     (active_dir / "live.bin").write_bytes(b"Y" * 4096)
 
+    # 3. Active dir owned by current process (must NOT be deleted on force=False)
+    current_dir = staged_root / "active_current_instance"
+    current_dir.mkdir(parents=True, exist_ok=True)
+    (current_dir / ".owner_pid").write_text(str(os.getpid()))
+    (current_dir / "active.bin").write_bytes(b"Z" * 1024)
+
     def mock_is_pid_alive(pid: int) -> bool:
         return pid == 88888
 
     with patch("qrtunnel.sync.is_pid_alive", side_effect=mock_is_pid_alive):
         reclaimed = cleanup_stale_staging_dirs(force=False)
 
-    # Orphan must be cleaned, active other instance must NOT be touched
+    # Orphan must be cleaned, active dirs must NOT be touched when force=False
     assert not orphan_dir.exists()
     assert active_dir.exists()
-    # 2048 (chunk.bin) + 8 (.owner_pid: "99999999") = 2056 bytes
+    assert current_dir.exists()
     assert reclaimed == 2056
 
     # When force=True (manual clean), everything is cleaned
     reclaimed_forced = cleanup_stale_staging_dirs(force=True)
     assert not active_dir.exists()
-    # 4096 (live.bin) + 5 (.owner_pid: "88888") = 4101 bytes
-    assert reclaimed_forced == 4101
+    assert not current_dir.exists()
+    assert reclaimed_forced == 4101 + 1024 + len(str(os.getpid()))
 
 
 def test_clean_cli_command(temp_config_dir, capsys):
