@@ -11,6 +11,7 @@ import hashlib
 import io
 import time
 import zipfile
+from pathlib import Path
 
 from streaming_form_data import StreamingFormDataParser
 
@@ -22,6 +23,7 @@ from qrtunnel.server import (
 )
 from qrtunnel.utils import sha256_file, store_cached_checksum
 from qrtunnel.zip_stream import (
+    StreamingZipEntry,
     calculate_zip_size,
     collect_zip_entries,
     stream_zip_archive,
@@ -170,3 +172,38 @@ def test_server_socket_and_protocol_config():
     assert FileTransferHandler.protocol_version == "HTTP/1.1"
     assert FileTransferHandler.wbufsize == 65536
     assert ThreadingHTTPServer.daemon_threads is True
+
+
+def test_streaming_zip_size_prediction_matches_stream_at_4gb_boundary(monkeypatch):
+    """Verify that calculate_zip_size and stream_zip_archive agree at the 4 GB Zip64 threshold."""
+    s = 4294967167
+    entry = StreamingZipEntry(Path("/fake/4gb.bin"), "4gb.bin", s)
+    pred = calculate_zip_size([entry])
+
+    class DummyFileStream:
+        def __init__(self, size):
+            self.rem = size
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, n):
+            to_read = min(n, self.rem)
+            self.rem -= to_read
+            return b"A" * to_read if to_read > 0 else b""
+
+    class CountingOutStream:
+        def __init__(self):
+            self.count = 0
+
+        def write(self, b):
+            self.count += len(b)
+
+    out = CountingOutStream()
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: DummyFileStream(s))
+    total_streamed = stream_zip_archive([entry], out, chunk_size=1048576 * 64)
+
+    assert total_streamed == pred
