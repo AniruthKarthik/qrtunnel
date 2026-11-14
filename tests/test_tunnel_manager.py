@@ -131,3 +131,14 @@ def test_cloudflare_tunnel_edge_registration_and_failure_detection():
     assert cf_fail.url_found.is_set()
     assert cf_fail.connection_failed.is_set()
     assert not cf_fail.connection_registered.is_set()
+
+
+def test_ensure_cloudflared_does_not_download_unverified_binary(monkeypatch):
+    import urllib.request
+    monkeypatch.setattr(tunnels, "get_cloudflared_path", lambda: None)
+    called = []
+    monkeypatch.setattr(urllib.request, "urlretrieve", lambda *args, **kwargs: called.append(True))
+
+    res = tunnels.ensure_cloudflared()
+    assert res is None
+    assert len(called) == 0
