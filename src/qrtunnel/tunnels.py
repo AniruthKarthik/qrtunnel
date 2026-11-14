@@ -366,7 +366,7 @@ class SSHTunnel:
             *key_args,
             "-p",
             "443",
-            "-R0:localhost:{self.local_port}",
+            f"-R0:localhost:{self.local_port}",
             "a.pinggy.io",
         ]
         if self._try_provider("pinggy.io (port 443)", cmd_pinggy, timeout=12):
