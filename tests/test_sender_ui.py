@@ -177,10 +177,10 @@ def test_sender_api_close_and_heartbeat():
 
 
 def test_sender_api_share_multiple_files(tmp_path):
-    sender_sync.initialize(port=6969, pin="2222", lan_ip="127.0.0.1")
+    sender_sync.initialize(port=6969, pin="2222", lan_ip="192.168.1.100")
     Config.LOCAL_PORT = 6969
     Config.OTP = "2222"
-    FileTransferHandler.server_lan_ip = "127.0.0.1"
+    FileTransferHandler.server_lan_ip = "192.168.1.100"
 
     # Construct multipart form body with 2 files
     boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
@@ -205,7 +205,7 @@ def test_sender_api_share_multiple_files(tmp_path):
         "Content-Type": f"multipart/form-data; boundary={boundary}",
     }
 
-    with patch("qrtunnel.qr.generate_qr_code"):
+    with patch("qrtunnel.qr.generate_qr_code"), patch("qrtunnel.tunnels.TunnelManager"):
         handler.handle_sender_share()
 
     handler.send_response.assert_called_with(200)
