@@ -214,8 +214,10 @@ def is_same_lan(client_ip, server_ip):
         if platform.system() == "Linux":
             try:
                 with open("/proc/net/arp") as f:
-                    if client_ip in f.read():
-                        return True
+                    for line in f:
+                        parts = line.split()
+                        if parts and parts[0] == client_ip:
+                            return True
             except Exception:
                 pass
         c_net = ipaddress.ip_network(f"{client_ip}/24", strict=False)
