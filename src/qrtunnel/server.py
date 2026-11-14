@@ -1566,13 +1566,15 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 with open(target_path, "rb") as f:
                     if start > 0:
                         f.seek(start)
-                    if platform.system() == "Linux" and hasattr(os, "sendfile"):
+                    use_sendfile = platform.system() == "Linux" and hasattr(os, "sendfile")
+                    sent = 0
+                    last_update = 0
+                    chunk_size = (
+                        1048576  # 1 MB slice for high wire throughput & smooth progress
+                    )
+
+                    if use_sendfile:
                         try:
-                            sent = 0
-                            last_update = 0
-                            chunk_size = (
-                                1048576  # 1 MB slice for high wire throughput & smooth progress
-                            )
                             while sent < content_length:
                                 to_send = min(chunk_size, content_length - sent)
                                 n = os.sendfile(
@@ -1595,12 +1597,13 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                 )
                         except BrokenPipeError:
                             print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
-                    else:
+                        except OSError:
+                            use_sendfile = False
+
+                    if not use_sendfile and sent < content_length:
                         try:
-                            remaining = content_length
-                            chunk_size = 1048576  # 1 MB
-                            sent = 0
-                            last_update = 0
+                            f.seek(start + sent)
+                            remaining = content_length - sent
                             while remaining > 0:
                                 chunk = f.read(min(chunk_size, remaining))
                                 if not chunk:

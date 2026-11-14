@@ -227,3 +227,33 @@ def test_streaming_zip_size_prediction_matches_stream_at_4gb_boundary(monkeypatc
     total_streamed = stream_zip_archive([entry], out, chunk_size=1048576 * 64)
 
     assert total_streamed == pred
+
+
+def test_sendfile_oserror_falls_back_to_chunked_stream(tmp_path, monkeypatch):
+    """Verify that if os.sendfile raises OSError (e.g. on FUSE/NFS), handler falls back to chunked read."""
+    from unittest.mock import MagicMock
+
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"HELLO SENDFILE FALLBACK")
+
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.file_paths = [str(f)]
+    handler.headers = {}
+    handler.client_address = ("127.0.0.1", 12345)
+    handler.connection = MagicMock()
+    handler.connection.fileno.return_value = 99
+    handler.wfile = io.BytesIO()
+    handler.send_response = MagicMock()
+    handler.send_header = MagicMock()
+    handler.end_headers = MagicMock()
+    handler.send_error = MagicMock()
+    handler._send_auth_cookie_if_needed = MagicMock()
+    handler.print_progress = MagicMock(return_value=0.0)
+
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+    monkeypatch.setattr("os.sendfile", MagicMock(side_effect=OSError(22, "Invalid argument")))
+
+    handler.serve_single_file("test.bin")
+
+    assert handler.wfile.getvalue() == b"HELLO SENDFILE FALLBACK"
+    assert not handler.send_error.called
