@@ -96,8 +96,13 @@ def _read_key_unix():
 
 
 def _read_key_win():
-    """Blocking single-key read on Windows."""
+    """Non-blocking single-key read on Windows with timeout."""
     import msvcrt
+    import time
+
+    if not msvcrt.kbhit():
+        time.sleep(0.15)
+        return None
 
     ch = msvcrt.getch()
     if ch in (b"\xe0", b"\x00"):
