@@ -1491,6 +1491,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def serve_zip_archive(self, file_paths=None, zip_name="qrtunnel-files.zip"):
         paths = file_paths if file_paths is not None else self.file_paths
+        if not paths:
+            self.send_error(404, "No files to download")
+            return
         self.stream_zip_response(file_paths=paths, zip_name=zip_name)
 
     def serve_single_file(self, filename):
@@ -1499,6 +1502,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             return
         if filename == "selected.zip":
             self.serve_selected_zip()
+            return
+        if not self.file_paths:
+            self.send_error(404, "File Not Found")
             return
         target_path = None
         if "/" in filename:
