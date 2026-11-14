@@ -1506,6 +1506,16 @@ body {
 </div>
 
 <script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 let activeTab = "send";
 function switchMainTab(tab) {
     if (tab !== 'send' && tab !== 'receive' && tab !== 'history') {
@@ -1603,7 +1613,7 @@ function updateFileList() {
                 """
         + ICONS["file"]
         + """
-                <span class="manifest-name mono" title="${file.name}">${file.name}</span>
+                <span class="manifest-name mono" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
               </div>
               <div class="manifest-meta">
                 <span class="manifest-size mono">${formatBytes(file.size)}</span>
@@ -1845,7 +1855,7 @@ function switchToActiveView(data) {
             """
         + ICONS["file"]
         + """
-            <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+            <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
           </div>
           <div class="manifest-meta">
             <span class="manifest-size mono">${formatBytes(f.size)}</span>
@@ -1940,7 +1950,7 @@ function renderReceivedFiles(files) {
                 """
         + ICONS["check"]
         + """
-                <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+                <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
               </div>
               <div class="manifest-meta">
                 <span class="manifest-size mono">${formatBytes(f.size)}</span>
@@ -1958,7 +1968,7 @@ function addReceivedFile(f) {
         """
         + ICONS["check"]
         + """
-        <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+        <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
       </div>
       <div class="manifest-meta">
         <span class="manifest-size mono">${formatBytes(f.size)}</span>
