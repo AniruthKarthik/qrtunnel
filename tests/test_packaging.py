@@ -17,3 +17,16 @@ def test_pyproject_toml_configures_pythonpath_src():
     pyproject_file = Path(__file__).resolve().parent.parent / "pyproject.toml"
     content = pyproject_file.read_text()
     assert 'pythonpath = ["src"]' in content
+
+
+def test_version_consistency_across_metadata_and_docs():
+    """Ensure SECURITY.md and DESIGN.md match current version in constants.py and pyproject.toml."""
+    from qrtunnel.constants import __version__
+
+    assert __version__ == "3.8.5"
+
+    security_file = Path(__file__).resolve().parent.parent / "SECURITY.md"
+    assert "3.8.x" in security_file.read_text()
+
+    design_file = Path(__file__).resolve().parent.parent / "DESIGN.md"
+    assert "v3.8.5" in design_file.read_text()

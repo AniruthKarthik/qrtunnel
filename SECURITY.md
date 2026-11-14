@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 3.5.x   | ✅ Yes     |
-| < 3.5   | ❌ No      |
+| 3.8.x   | ✅ Yes     |
+| < 3.8   | ❌ No      |
 
 ## Reporting a Vulnerability
 
