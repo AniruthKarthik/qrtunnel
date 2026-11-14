@@ -272,9 +272,14 @@ def parse_args():
     port = 6969  # Default port
     clean_argv = []
 
+    after_double_dash = False
     for arg in argv:
-        # Match -1234 or --1234
-        if re.match(r"^--?\d{2,5}$", arg):
+        if arg == "--":
+            after_double_dash = True
+            clean_argv.append(arg)
+            continue
+        # Match -1234 or --1234, but never treat an existing file on disk as a port flag
+        if not after_double_dash and re.match(r"^--?\d{2,5}$", arg) and not os.path.exists(arg):
             try:
                 p = int(arg.lstrip("-"))
                 if 1 <= p <= 65535:
