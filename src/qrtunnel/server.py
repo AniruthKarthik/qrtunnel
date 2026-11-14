@@ -63,9 +63,9 @@ class ActiveTransferTracker:
         self._lock = threading.Lock()
         self._transfers = {}
 
-    def start_stream(self, client_ip, path, file_size, is_range):
+    def start_stream(self, client_ip, path, file_size, is_range, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if not is_range and stream_id is not None else (client_ip, str(path))
             if key not in self._transfers:
                 self._transfers[key] = {
                     "sent": 0,
@@ -76,9 +76,11 @@ class ActiveTransferTracker:
             else:
                 self._transfers[key]["streams"] += 1
 
-    def update_sent(self, client_ip, path, n_bytes):
+    def update_sent(self, client_ip, path, n_bytes, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            if key not in self._transfers and stream_id is not None:
+                key = (client_ip, str(path))
             if key in self._transfers:
                 self._transfers[key]["sent"] += n_bytes
                 return min(
@@ -86,9 +88,11 @@ class ActiveTransferTracker:
                 ), self._transfers[key]["file_size"]
             return n_bytes, 0
 
-    def finish_stream(self, client_ip, path):
+    def finish_stream(self, client_ip, path, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            if key not in self._transfers and stream_id is not None:
+                key = (client_ip, str(path))
             if key in self._transfers:
                 self._transfers[key]["streams"] -= 1
                 if self._transfers[key]["streams"] <= 0:
@@ -1553,7 +1557,11 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.flush()
             is_range = bool(range_req)
-            _transfer_tracker.start_stream(self.client_address[0], target_path, file_size, is_range)
+            client_ip = self.get_real_client_ip()
+            stream_id = id(self) if not is_range else None
+            _transfer_tracker.start_stream(
+                client_ip, target_path, file_size, is_range, stream_id=stream_id
+            )
             try:
                 with open(target_path, "rb") as f:
                     if start > 0:
@@ -1577,7 +1585,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                     break
                                 sent += n
                                 agg_sent, _ = _transfer_tracker.update_sent(
-                                    self.client_address[0], target_path, n
+                                    client_ip, target_path, n, stream_id=stream_id
                                 )
                                 last_update = self.print_progress(
                                     f"Download {filename}",
@@ -1601,7 +1609,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                 remaining -= len(chunk)
                                 sent += len(chunk)
                                 agg_sent, _ = _transfer_tracker.update_sent(
-                                    self.client_address[0], target_path, len(chunk)
+                                    client_ip, target_path, len(chunk), stream_id=stream_id
                                 )
                                 last_update = self.print_progress(
                                     f"Download {filename}",
@@ -1614,15 +1622,15 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                             print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
             finally:
                 is_last_stream = _transfer_tracker.finish_stream(
-                    self.client_address[0], target_path
+                    client_ip, target_path, stream_id=stream_id
                 )
 
             if is_last_stream:
                 self.print_progress(f"Download {filename}", file_size, file_size, force=True)
                 print()
-                print(f"{OK} File '{filename}' served to {self.client_address[0]}")
+                print(f"{OK} File '{filename}' served to {client_ip}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")
-                log_transfer(filename, file_size, self.client_address[0], "send")
+                log_transfer(filename, file_size, client_ip, "send")
         except Exception as e:
             if not isinstance(e, BrokenPipeError) and "Broken pipe" not in str(e):
                 print(f"{ERR} Error serving file '{filename}': {e}")
