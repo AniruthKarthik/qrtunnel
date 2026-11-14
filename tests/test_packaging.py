@@ -10,3 +10,10 @@ def test_requirements_txt_has_no_local_paths_or_editable_artifacts():
         assert not line.startswith("file://"), f"Found local file URL in requirements.txt: {line}"
         assert "@ file://" not in line, f"Found local file URL in requirements.txt: {line}"
         assert line != "e==1.4.5", f"Found invalid editable artifact package in requirements.txt: {line}"
+
+
+def test_pyproject_toml_configures_pythonpath_src():
+    """Ensure pyproject.toml defines pythonpath = ['src'] for clean out-of-tree test execution."""
+    pyproject_file = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    content = pyproject_file.read_text()
+    assert 'pythonpath = ["src"]' in content
