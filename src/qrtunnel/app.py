@@ -4,8 +4,8 @@ import argparse
 import atexit
 import os
 import platform
-import random
 import re
+import secrets
 import signal
 import sys
 import threading
@@ -56,7 +56,7 @@ def launch_server(
     """Everything that happens after the user confirms in the TUI or starts CLI."""
     Config.LOCAL_PORT = port
     if not Config.OTP:
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
 
     # map mode_name → flags
     lan_only = mode_name == "LAN"
@@ -450,7 +450,7 @@ def main():
     if args.command is None:
         port = cli_port if cli_port else find_available_port()
         Config.LOCAL_PORT = port
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
         current_lan_ip = get_lan_ip()
         FileTransferHandler.server_lan_ip = current_lan_ip
         FileTransferHandler.file_paths = None
@@ -551,7 +551,7 @@ def main():
     if args.command == "tui":
         port = cli_port if cli_port else find_available_port()
         Config.LOCAL_PORT = port
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
         current_lan_ip = get_lan_ip()
         FileTransferHandler.server_lan_ip = current_lan_ip
         FileTransferHandler.file_paths = None

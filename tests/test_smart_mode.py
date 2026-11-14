@@ -124,3 +124,36 @@ def test_get_real_client_ip_validates_ip_format():
     # Malicious XSS or non-IP input in header must be rejected and fall back to socket IP
     handler.headers = {"X-Forwarded-For": "<script>alert(1)</script>"}
     assert handler.get_real_client_ip() == "127.0.0.1"
+
+
+def test_login_rate_limiting_and_lockout():
+    import io
+    from unittest.mock import MagicMock
+
+    from qrtunnel.config import Config
+
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("198.51.100.2", 54321)
+    handler.headers = {"Content-Length": "13"}
+    handler.authorized_sessions = set()
+    handler.close_connection = False
+
+    responses = []
+    handler.send_response = lambda code: responses.append(code)
+    handler.send_header = MagicMock()
+    handler.end_headers = MagicMock()
+    handler.wfile = io.BytesIO()
+
+    Config.OTP = "4242"
+    for _ in range(5):
+        handler.rfile = io.BytesIO(b"password=0000")
+        handler.handle_login()
+
+    assert 403 in responses
+    assert 429 in responses
+
+    # 6th attempt should be locked out with 429 even with valid password
+    responses.clear()
+    handler.rfile = io.BytesIO(b"password=4242")
+    handler.handle_login()
+    assert responses == [429]

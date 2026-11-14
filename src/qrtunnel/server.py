@@ -1,6 +1,7 @@
 """HTTP handlers for file download and upload."""
 
 import hashlib
+import hmac
 import http.cookies
 import io
 import json
@@ -97,6 +98,49 @@ class ActiveTransferTracker:
 
 
 _transfer_tracker = ActiveTransferTracker()
+
+
+class LoginRateLimiter:
+    """Thread-safe rate limiter and lockout tracker for PIN authentication."""
+
+    def __init__(self, max_attempts: int = 5, lockout_seconds: float = 60.0):
+        self._lock = threading.Lock()
+        self.max_attempts = max_attempts
+        self.lockout_seconds = lockout_seconds
+        self._attempts = {}
+
+    def is_locked_out(self, client_ip: str):
+        with self._lock:
+            if client_ip not in self._attempts:
+                return False, 0.0
+            attempts, lockout_until = self._attempts[client_ip]
+            now = time.monotonic()
+            if now < lockout_until:
+                return True, lockout_until - now
+            if lockout_until > 0 and now >= lockout_until:
+                del self._attempts[client_ip]
+                return False, 0.0
+            return False, 0.0
+
+    def record_failure(self, client_ip: str):
+        with self._lock:
+            now = time.monotonic()
+            attempts, lockout_until = self._attempts.get(client_ip, (0, 0.0))
+            if now < lockout_until:
+                return attempts, True
+            attempts += 1
+            if attempts >= self.max_attempts:
+                self._attempts[client_ip] = (attempts, now + self.lockout_seconds)
+                return attempts, True
+            self._attempts[client_ip] = (attempts, 0.0)
+            return attempts, False
+
+    def record_success(self, client_ip: str):
+        with self._lock:
+            self._attempts.pop(client_ip, None)
+
+
+_login_rate_limiter = LoginRateLimiter()
 
 
 class MultiFileTarget(BaseTarget):
@@ -294,13 +338,25 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def handle_login(self):
         try:
+            client_ip = self.get_real_client_ip()
+            locked, remaining = _login_rate_limiter.is_locked_out(client_ip)
+            if locked:
+                print(f"{WRN} Rate limit exceeded for {client_ip} on /login")
+                self.send_login_page(
+                    error=f"Too many failed attempts. Try again in {int(remaining) + 1}s.",
+                    status_code=429,
+                )
+                return
+
             content_length = int(self.headers["Content-Length"])
             post_data = self.rfile.read(content_length).decode("utf-8")
             from urllib.parse import parse_qs
 
             params = parse_qs(post_data)
             password = params.get("password", [""])[0]
-            if password == Config.OTP:
+            otp_str = str(Config.OTP or "")
+            if hmac.compare_digest(password, otp_str):
+                _login_rate_limiter.record_success(client_ip)
                 session_token = str(uuid.uuid4())
                 self.authorized_sessions.add(session_token)
                 self.send_response(303)
@@ -311,10 +367,16 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.send_header("Connection", "keep-alive")
                 self.end_headers()
-                print(f"{OK} Auth success from {self.client_address[0]}")
+                print(f"{OK} Auth success from {client_ip}")
             else:
-                print(f"{WRN} Failed auth attempt from {self.client_address[0]}")
-                self.send_login_page(error="Incorrect 4-digit code")
+                attempts, is_locked = _login_rate_limiter.record_failure(client_ip)
+                print(f"{WRN} Failed auth attempt ({attempts}) from {client_ip}")
+                err_msg = (
+                    "Too many failed attempts. Please wait 60 seconds."
+                    if is_locked
+                    else "Incorrect 4-digit code"
+                )
+                self.send_login_page(error=err_msg, status_code=429 if is_locked else 403)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception as e:
@@ -330,10 +392,11 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     def get_receiver_session_script():
         return render_receiver_session_script()
 
-    def send_login_page(self, error=None):
+    def send_login_page(self, error=None, status_code=None):
         html = render_login_page(error=error)
         encoded = html.encode("utf-8")
-        self.send_response(200 if not error else 403)
+        code = status_code if status_code else (200 if not error else 403)
+        self.send_response(code)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
