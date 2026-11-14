@@ -242,3 +242,21 @@ def test_dashboard_contains_html_escape_helper():
     )
     assert "function escapeHtml(str)" in html
     assert "${escapeHtml(f.name)}" in html
+
+
+def test_dashboard_does_not_teardown_on_unload_or_pagehide():
+    """Verify dashboard does not bind close beacons to beforeunload/pagehide to prevent premature teardown on refresh."""
+    html = render_dashboard(
+        current_lan_ip="192.168.1.100",
+        has_lan=True,
+        pin_str="1234",
+        port_val="6969",
+        rec_init_mode="LAN",
+        rec_init_url="http://192.168.1.100:6969",
+        rec_init_qr_svg="<svg></svg>",
+        cwd_name="workspace",
+        initial_state_json="{}",
+        default_tab="send",
+    )
+    assert "beforeunload" not in html
+    assert "pagehide" not in html

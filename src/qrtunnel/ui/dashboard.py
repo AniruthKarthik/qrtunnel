@@ -2061,12 +2061,6 @@ closeSessionBtn.addEventListener('click', () => {
     });
 });
 
-function closeNotification() {
-    navigator.sendBeacon('/api/sender/close');
-}
-window.addEventListener('beforeunload', closeNotification);
-window.addEventListener('pagehide', closeNotification);
-
 setInterval(() => {
     fetch('/api/sender/heartbeat', { method: 'POST', keepalive: true }).catch(() => {});
 }, 1500);
