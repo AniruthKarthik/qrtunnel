@@ -1,6 +1,7 @@
 """Wi-Fi hotspot QR configuration helpers."""
 
 import json
+import os
 
 from .config import Config
 from .constants import ERR, OK
@@ -24,8 +25,20 @@ class HotspotHelper:
 
     def save_config(self, config):
         Config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(self.config_file, "w") as f:
-            json.dump(config, f, indent=2)
+        dir_path = self.config_file.parent
+        temp_path = dir_path / f".{self.config_file.name}.tmp"
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, self.config_file)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
 
     def setup_interactive(self):
         print("\n" + "=" * 60)
