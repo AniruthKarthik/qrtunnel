@@ -13,6 +13,7 @@ IGNORED_INTERFACE_PREFIXES = (
     "br-",
     "docker",
     "lo",
+    "podman",
     "tap",
     "tun",
     "veth",

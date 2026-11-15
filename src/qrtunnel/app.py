@@ -656,7 +656,10 @@ def main():
     print("=" * 60)
 
     try:
-        ans = input("\nProceed? [Y/n] ").strip().lower()
+        try:
+            ans = input("\nProceed? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = "y"  # Default to proceed if non-interactive stdin
         if ans not in ("", "y", "yes"):
             print("\n[*] Cancelled.")
             sys.exit(0)
