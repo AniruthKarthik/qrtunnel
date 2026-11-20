@@ -9,7 +9,9 @@ def test_requirements_txt_has_no_local_paths_or_editable_artifacts():
         line = line.strip()
         assert not line.startswith("file://"), f"Found local file URL in requirements.txt: {line}"
         assert "@ file://" not in line, f"Found local file URL in requirements.txt: {line}"
-        assert line != "e==1.4.5", f"Found invalid editable artifact package in requirements.txt: {line}"
+        assert line != "e==1.4.5", (
+            f"Found invalid editable artifact package in requirements.txt: {line}"
+        )
 
 
 def test_pyproject_toml_configures_pythonpath_src():
@@ -23,10 +25,10 @@ def test_version_consistency_across_metadata_and_docs():
     """Ensure SECURITY.md and DESIGN.md match current version in constants.py and pyproject.toml."""
     from qrtunnel.constants import __version__
 
-    assert __version__ == "3.8.5"
+    assert __version__ == "3.8.6"
 
     security_file = Path(__file__).resolve().parent.parent / "SECURITY.md"
     assert "3.8.x" in security_file.read_text()
 
     design_file = Path(__file__).resolve().parent.parent / "DESIGN.md"
-    assert "v3.8.5" in design_file.read_text()
+    assert "v3.8.6" in design_file.read_text()

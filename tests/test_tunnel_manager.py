@@ -135,6 +135,7 @@ def test_cloudflare_tunnel_edge_registration_and_failure_detection():
 
 def test_ensure_cloudflared_does_not_download_unverified_binary(monkeypatch):
     import urllib.request
+
     monkeypatch.setattr(tunnels, "get_cloudflared_path", lambda: None)
     called = []
     monkeypatch.setattr(urllib.request, "urlretrieve", lambda *args, **kwargs: called.append(True))

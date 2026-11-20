@@ -209,7 +209,7 @@ def test_session_script_bauhaus_design():
 
 def test_download_and_success_pages_escape_html_filenames(tmp_path):
     """Verify download and success pages escape HTML tags to prevent XSS."""
-    xss_name = '<img src=x onerror=alert(1)>.txt'
+    xss_name = "<img src=x onerror=alert(1)>.txt"
     test_file = tmp_path / xss_name
     test_file.write_text("safe content")
 

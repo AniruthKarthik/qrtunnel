@@ -13,6 +13,55 @@ _Changes not yet released go here._
 
 ---
 
+## [3.8.6] - 2026-11-20
+
+### Security
+- **Reverse Proxy & Tunnel Request Authentication**:
+  - Enforced strict request authentication and admin endpoint restriction on reverse-proxy and tunnel connections via `is_local_request()`, preventing traffic forwarded over loopback (`127.0.0.1`) from bypassing authentication.
+- **Cross-Site Scripting (XSS) Prevention**:
+  - Strictly sanitized user filenames using `html.escape` in server-rendered download and upload receipt pages.
+  - Implemented `escapeHtml()` in Bauhaus dashboard JavaScript before inserting filenames or client IPs into DOM `innerHTML`.
+- **Client IP Header Validation**:
+  - Validated client IP candidate headers (`CF-Connecting-IP`, `X-Forwarded-For`, `X-Real-IP`) with `ipaddress.ip_address` before trusting values, preventing header spoofing and injection into audit history logs.
+- **Login Rate Limiting & Timing Attack Hardening**:
+  - Introduced `LoginRateLimiter` enforcing a 60-second lockout after 5 consecutive failed PIN attempts.
+  - Hardened PIN verification against timing attacks using `hmac.compare_digest`.
+  - Migrated OTP generation from `random.randint` to cryptographically secure `secrets.randbelow`.
+- **Eliminated Unverified Remote Downloads**:
+  - Removed silent remote binary download of `cloudflared` from GitHub releases over unverified urllib, replacing it with clear manual installation guidance.
+
+### Fixed
+- **Concurrent Stream Tracking**:
+  - Differentiated concurrent client transfer sessions by unique `stream_id` and validated real client IP, preventing reverse-proxy tunnels from coalescing separate transfers into a single stream.
+- **Resilient File Streaming on Non-Standard Filesystems**:
+  - Added graceful fallback to chunked streaming when `os.sendfile` raises `OSError` (e.g. on FUSE, SSHFS, NFS, or ecryptfs mounts).
+- **Streaming Zip64 Header Size Parity**:
+  - Synchronized Zip64 boundary threshold pre-calculation with the streaming writer to ensure `Content-Length` matches the streamed byte count.
+- **Thread-Safe Transfer History & Hotspot Persistence**:
+  - Added mutex locking (`_history_lock`) and atomic temporary-file replacement in `history.py` and `hotspot.py`, preventing race conditions and corrupted JSON files under concurrent transfers.
+- **Non-TTY and Non-Blocking Keyboard Input**:
+  - Safeguarded `_read_key_unix` against `termios.tcgetattr` ioctl crashes when stdin is non-interactive or redirected.
+  - Implemented non-blocking `msvcrt.kbhit()` polling with a 150ms timeout on Windows, allowing timeout expiration (`--expire`) and synchronization loops to proceed without keypresses.
+- **Session Lifecycle & Staging GC Preservation**:
+  - Removed premature `beforeunload` and `pagehide` session teardown hooks from dashboard JavaScript, preventing routine page refreshes (F5) or mobile tab switching from aborting transfers.
+  - Fixed startup/routine garbage collection to preserve active staging files owned by the running process (`owner_pid != current_pid`).
+- **CLI Argument Preservation**:
+  - Preserved numeric filenames (e.g., `-8080`) when existing on disk and added POSIX `--` delimiter awareness in CLI custom port pre-processing.
+- **Network Interface & LAN Filtering**:
+  - Corrected ARP table parsing in `is_same_lan` to match the exact IP column, eliminating substring match false positives.
+  - Filtered out container virtual interfaces (Podman) during LAN IP detection.
+- **Null Safety in Server Endpoints**:
+  - Added guards in `serve_single_file` and `serve_zip_archive` when `file_paths` is `None` in receive-only mode, returning HTTP 404 instead of raising an unhandled 500 error.
+- **Pinggy SSH Tunnel Command Formatting**:
+  - Fixed missing f-string formatting in fallback pinggy.io SSH tunnel command.
+
+### Packaging & Tests
+- Cleaned local developer paths (`file://`) and stray freeze artifacts (`e==1.4.5`) from `requirements.txt`.
+- Configured `pythonpath = ["src"]` in `pyproject.toml` pytest options for reliable out-of-tree test execution.
+- Added comprehensive test suites for packaging consistency, keyboard input, LAN subnet matching, and tunnel test isolation.
+
+---
+
 ## [3.8.5] - 2026-10-31
 
 ### Added

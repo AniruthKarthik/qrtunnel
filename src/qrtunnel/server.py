@@ -65,7 +65,11 @@ class ActiveTransferTracker:
 
     def start_stream(self, client_ip, path, file_size, is_range, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path), stream_id) if not is_range and stream_id is not None else (client_ip, str(path))
+            key = (
+                (client_ip, str(path), stream_id)
+                if not is_range and stream_id is not None
+                else (client_ip, str(path))
+            )
             if key not in self._transfers:
                 self._transfers[key] = {
                     "sent": 0,
@@ -78,7 +82,11 @@ class ActiveTransferTracker:
 
     def update_sent(self, client_ip, path, n_bytes, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            key = (
+                (client_ip, str(path), stream_id)
+                if stream_id is not None
+                else (client_ip, str(path))
+            )
             if key not in self._transfers and stream_id is not None:
                 key = (client_ip, str(path))
             if key in self._transfers:
@@ -90,7 +98,11 @@ class ActiveTransferTracker:
 
     def finish_stream(self, client_ip, path, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            key = (
+                (client_ip, str(path), stream_id)
+                if stream_id is not None
+                else (client_ip, str(path))
+            )
             if key not in self._transfers and stream_id is not None:
                 key = (client_ip, str(path))
             if key in self._transfers:
@@ -1569,9 +1581,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                     use_sendfile = platform.system() == "Linux" and hasattr(os, "sendfile")
                     sent = 0
                     last_update = 0
-                    chunk_size = (
-                        1048576  # 1 MB slice for high wire throughput & smooth progress
-                    )
+                    chunk_size = 1048576  # 1 MB slice for high wire throughput & smooth progress
 
                     if use_sendfile:
                         try:
