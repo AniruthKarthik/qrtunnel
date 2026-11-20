@@ -251,7 +251,9 @@ def test_sendfile_oserror_falls_back_to_chunked_stream(tmp_path, monkeypatch):
     handler.print_progress = MagicMock(return_value=0.0)
 
     monkeypatch.setattr("platform.system", lambda: "Linux")
-    monkeypatch.setattr("os.sendfile", MagicMock(side_effect=OSError(22, "Invalid argument")))
+    monkeypatch.setattr(
+        "os.sendfile", MagicMock(side_effect=OSError(22, "Invalid argument")), raising=False
+    )
 
     handler.serve_single_file("test.bin")
 
