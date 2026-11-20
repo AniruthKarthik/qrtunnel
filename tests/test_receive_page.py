@@ -116,7 +116,9 @@ def test_handle_receiver_mode_switch_to_cloudflare():
         6969, "cloudflared", url="https://mock-cf.trycloudflare.com", succeeds=True
     )
 
-    with patch("qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf):
+    with patch("qrtunnel.server.ThreadingHTTPServer"), patch(
+        "qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf
+    ):
         handler.handle_receiver_mode()
 
     handler.send_response.assert_called_with(200)
@@ -134,7 +136,9 @@ def test_handle_receiver_mode_switch_to_ssh():
     handler = create_handler(path="/api/receiver/mode?mode=SSH&port=6969", method="POST")
     fake_ssh = FakeTunnel(6969, "localhost.run", url="https://mock-ssh.lhr.life", succeeds=True)
 
-    with patch("qrtunnel.tunnels.SSHTunnel", return_value=fake_ssh):
+    with patch("qrtunnel.server.ThreadingHTTPServer"), patch(
+        "qrtunnel.tunnels.SSHTunnel", return_value=fake_ssh
+    ):
         handler.handle_receiver_mode()
 
     handler.send_response.assert_called_with(200)
@@ -151,7 +155,8 @@ def test_handle_receiver_mode_switch_to_lan():
     handler = create_handler(path="/api/receiver/mode?mode=LAN&port=6969", method="POST")
     handler.server_lan_ip = "192.168.1.10"
 
-    handler.handle_receiver_mode()
+    with patch("qrtunnel.server.ThreadingHTTPServer"):
+        handler.handle_receiver_mode()
 
     handler.send_response.assert_called_with(200)
     resp = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -170,9 +175,10 @@ def test_handle_receiver_mode_lan_fallback_when_no_lan():
         6969, "cloudflared", url="https://auto-fallback.trycloudflare.com", succeeds=True
     )
 
-    with patch("qrtunnel.server.get_lan_ip", return_value=None):
-        with patch("qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf):
-            handler.handle_receiver_mode()
+    with patch("qrtunnel.server.ThreadingHTTPServer"), patch(
+        "qrtunnel.server.get_lan_ip", return_value=None
+    ), patch("qrtunnel.tunnels.CloudflareTunnel", return_value=fake_cf):
+        handler.handle_receiver_mode()
 
     handler.send_response.assert_called_with(200)
     resp = json.loads(handler.wfile.getvalue().decode("utf-8"))
