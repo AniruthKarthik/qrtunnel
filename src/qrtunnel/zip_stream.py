@@ -66,9 +66,13 @@ def calculate_zip_size(entries: List[StreamingZipEntry]) -> int:
 
     cd_start_offset = offset
     cd_total_size = 0
+    min_cd_size = sum(46 + len(e.name_bytes) for e in entries)
 
     is_overall_zip64 = (
-        len(entries) >= 0xFFFF or cd_start_offset >= 0xFFFFFFFF or any(e.is_zip64 for e in entries)
+        len(entries) >= 0xFFFF
+        or cd_start_offset >= 0xFFFFFFFF
+        or (cd_start_offset + min_cd_size + 22) >= 0xFFFFFFFF
+        or any(e.is_zip64 for e in entries)
     )
 
     for entry in entries:
@@ -80,7 +84,7 @@ def calculate_zip_size(entries: List[StreamingZipEntry]) -> int:
         cd_total_size += cd_len
         total += cd_len
 
-    if is_overall_zip64 or (cd_start_offset + cd_total_size) >= 0xFFFFFFFF:
+    if is_overall_zip64:
         # Zip64 end of central dir record (56) + Zip64 locator (20) + standard EOCD (22)
         total += 56 + 20 + 22
     else:

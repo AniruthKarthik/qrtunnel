@@ -131,3 +131,31 @@ def test_cloudflare_tunnel_edge_registration_and_failure_detection():
     assert cf_fail.url_found.is_set()
     assert cf_fail.connection_failed.is_set()
     assert not cf_fail.connection_registered.is_set()
+
+
+def test_ensure_cloudflared_does_not_download_unverified_binary(monkeypatch):
+    import urllib.request
+    monkeypatch.setattr(tunnels, "get_cloudflared_path", lambda: None)
+    called = []
+    monkeypatch.setattr(urllib.request, "urlretrieve", lambda *args, **kwargs: called.append(True))
+
+    res = tunnels.ensure_cloudflared()
+    assert res is None
+    assert len(called) == 0
+
+
+def test_ssh_tunnel_pinggy_command_formats_local_port(monkeypatch):
+    ssh = tunnels.SSHTunnel(local_port=8088)
+    captured_cmds = []
+
+    def fake_try_provider(name, cmd, timeout=12):
+        captured_cmds.append((name, cmd))
+        return False
+
+    monkeypatch.setattr(ssh, "_try_provider", fake_try_provider)
+    ssh.start()
+
+    assert len(captured_cmds) == 2
+    pinggy_cmd = captured_cmds[1][1]
+    assert "-R0:localhost:8088" in pinggy_cmd
+    assert "-R0:localhost:{self.local_port}" not in pinggy_cmd

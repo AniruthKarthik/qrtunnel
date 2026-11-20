@@ -205,3 +205,58 @@ def test_session_script_bauhaus_design():
     assert "/api/session/status" in script
     assert "/api/receiver/events" in script
     assert "#F8F6F0" in script
+
+
+def test_download_and_success_pages_escape_html_filenames(tmp_path):
+    """Verify download and success pages escape HTML tags to prevent XSS."""
+    xss_name = '<img src=x onerror=alert(1)>.txt'
+    test_file = tmp_path / xss_name
+    test_file.write_text("safe content")
+
+    dl_html = render_download_page([str(test_file)])
+    assert "<img src=x onerror=alert(1)>" not in dl_html
+    assert "&lt;img src=x onerror=alert(1)&gt;.txt" in dl_html
+
+    success_single = render_upload_success_page(xss_name)
+    assert "<img src=x onerror=alert(1)>" not in success_single
+    assert "&lt;img src=x onerror=alert(1)&gt;.txt" in success_single
+
+    success_multi = render_upload_success_page([(xss_name, 100)])
+    assert "<img src=x onerror=alert(1)>" not in success_multi
+    assert "&lt;img src=x onerror=alert(1)&gt;.txt" in success_multi
+
+
+def test_dashboard_contains_html_escape_helper():
+    """Verify dashboard JS defines escapeHtml and uses it for dynamic filename insertion."""
+    html = render_dashboard(
+        current_lan_ip="192.168.1.100",
+        has_lan=True,
+        pin_str="1234",
+        port_val="6969",
+        rec_init_mode="LAN",
+        rec_init_url="http://192.168.1.100:6969",
+        rec_init_qr_svg="<svg></svg>",
+        cwd_name="workspace",
+        initial_state_json="{}",
+        default_tab="send",
+    )
+    assert "function escapeHtml(str)" in html
+    assert "${escapeHtml(f.name)}" in html
+
+
+def test_dashboard_does_not_teardown_on_unload_or_pagehide():
+    """Verify dashboard does not bind close beacons to beforeunload/pagehide to prevent premature teardown on refresh."""
+    html = render_dashboard(
+        current_lan_ip="192.168.1.100",
+        has_lan=True,
+        pin_str="1234",
+        port_val="6969",
+        rec_init_mode="LAN",
+        rec_init_url="http://192.168.1.100:6969",
+        rec_init_qr_svg="<svg></svg>",
+        cwd_name="workspace",
+        initial_state_json="{}",
+        default_tab="send",
+    )
+    assert "beforeunload" not in html
+    assert "pagehide" not in html

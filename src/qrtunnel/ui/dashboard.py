@@ -1506,6 +1506,16 @@ body {
 </div>
 
 <script>
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 let activeTab = "send";
 function switchMainTab(tab) {
     if (tab !== 'send' && tab !== 'receive' && tab !== 'history') {
@@ -1603,7 +1613,7 @@ function updateFileList() {
                 """
         + ICONS["file"]
         + """
-                <span class="manifest-name mono" title="${file.name}">${file.name}</span>
+                <span class="manifest-name mono" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
               </div>
               <div class="manifest-meta">
                 <span class="manifest-size mono">${formatBytes(file.size)}</span>
@@ -1845,7 +1855,7 @@ function switchToActiveView(data) {
             """
         + ICONS["file"]
         + """
-            <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+            <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
           </div>
           <div class="manifest-meta">
             <span class="manifest-size mono">${formatBytes(f.size)}</span>
@@ -1940,7 +1950,7 @@ function renderReceivedFiles(files) {
                 """
         + ICONS["check"]
         + """
-                <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+                <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
               </div>
               <div class="manifest-meta">
                 <span class="manifest-size mono">${formatBytes(f.size)}</span>
@@ -1958,7 +1968,7 @@ function addReceivedFile(f) {
         """
         + ICONS["check"]
         + """
-        <span class="manifest-name mono" title="${f.name}">${f.name}</span>
+        <span class="manifest-name mono" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
       </div>
       <div class="manifest-meta">
         <span class="manifest-size mono">${formatBytes(f.size)}</span>
@@ -2051,12 +2061,6 @@ closeSessionBtn.addEventListener('click', () => {
     });
 });
 
-function closeNotification() {
-    navigator.sendBeacon('/api/sender/close');
-}
-window.addEventListener('beforeunload', closeNotification);
-window.addEventListener('pagehide', closeNotification);
-
 setInterval(() => {
     fetch('/api/sender/heartbeat', { method: 'POST', keepalive: true }).catch(() => {});
 }, 1500);
@@ -2091,9 +2095,9 @@ function renderHistoryRows(entries) {
         tr.innerHTML = `
             <td class="mono" style="color:var(--bh-ink-muted);font-size:11px;">${ts}</td>
             <td>${dirBadge}</td>
-            <td class="mono" style="font-weight:600;">${item.filename || '-'}</td>
+            <td class="mono" style="font-weight:600;">${escapeHtml(item.filename || '-')}</td>
             <td class="mono">${formatBytes(item.size || 0)}</td>
-            <td class="mono" style="color:var(--bh-ink-secondary);">${item.client_ip || '-'}</td>
+            <td class="mono" style="color:var(--bh-ink-secondary);">${escapeHtml(item.client_ip || '-')}</td>
         `;
         tbody.appendChild(tr);
     });

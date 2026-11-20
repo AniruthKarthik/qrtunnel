@@ -4,8 +4,8 @@ import argparse
 import atexit
 import os
 import platform
-import random
 import re
+import secrets
 import signal
 import sys
 import threading
@@ -56,7 +56,7 @@ def launch_server(
     """Everything that happens after the user confirms in the TUI or starts CLI."""
     Config.LOCAL_PORT = port
     if not Config.OTP:
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
 
     # map mode_name → flags
     lan_only = mode_name == "LAN"
@@ -272,9 +272,14 @@ def parse_args():
     port = 6969  # Default port
     clean_argv = []
 
+    after_double_dash = False
     for arg in argv:
-        # Match -1234 or --1234
-        if re.match(r"^--?\d{2,5}$", arg):
+        if arg == "--":
+            after_double_dash = True
+            clean_argv.append(arg)
+            continue
+        # Match -1234 or --1234, but never treat an existing file on disk as a port flag
+        if not after_double_dash and re.match(r"^--?\d{2,5}$", arg) and not os.path.exists(arg):
             try:
                 p = int(arg.lstrip("-"))
                 if 1 <= p <= 65535:
@@ -450,7 +455,7 @@ def main():
     if args.command is None:
         port = cli_port if cli_port else find_available_port()
         Config.LOCAL_PORT = port
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
         current_lan_ip = get_lan_ip()
         FileTransferHandler.server_lan_ip = current_lan_ip
         FileTransferHandler.file_paths = None
@@ -551,7 +556,7 @@ def main():
     if args.command == "tui":
         port = cli_port if cli_port else find_available_port()
         Config.LOCAL_PORT = port
-        Config.OTP = f"{random.randint(0, 9999):04d}"
+        Config.OTP = f"{secrets.randbelow(10000):04d}"
         current_lan_ip = get_lan_ip()
         FileTransferHandler.server_lan_ip = current_lan_ip
         FileTransferHandler.file_paths = None
@@ -651,7 +656,10 @@ def main():
     print("=" * 60)
 
     try:
-        ans = input("\nProceed? [Y/n] ").strip().lower()
+        try:
+            ans = input("\nProceed? [Y/n] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            ans = "y"  # Default to proceed if non-interactive stdin
         if ans not in ("", "y", "yes"):
             print("\n[*] Cancelled.")
             sys.exit(0)

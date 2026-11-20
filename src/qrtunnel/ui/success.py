@@ -1,5 +1,6 @@
 """Bauhaus Upload Complete / Success Page."""
 
+import html as html_lib
 from typing import Any, List, Union
 
 from ..utils import format_size
@@ -21,7 +22,8 @@ def render_upload_success_page(files: Union[str, List[Any]]) -> str:
     total_files = len(file_items)
     if total_files == 1:
         fn, sz = file_items[0]
-        label = f"{fn} ({format_size(sz)})" if sz is not None else fn
+        fn_escaped = html_lib.escape(fn)
+        label = f"{fn_escaped} ({format_size(sz)})" if sz is not None else fn_escaped
         subtitle = "The file was successfully received on the host computer."
         content_html = f'<div class="receipt-single mono">{label}</div>'
         btn_label = "Upload Another File"
@@ -29,12 +31,13 @@ def render_upload_success_page(files: Union[str, List[Any]]) -> str:
         subtitle = f"{total_files} files were successfully received on the host computer."
         items_html = ""
         for fn, sz in file_items:
+            fn_escaped = html_lib.escape(fn)
             sz_str = (
                 f' <span class="mono" style="color:var(--bh-ink-muted);font-weight:500;">({format_size(sz)})</span>'
                 if sz is not None
                 else ""
             )
-            items_html += f'<li class="receipt-item"><span class="receipt-name mono">✓ {fn}</span>{sz_str}</li>'
+            items_html += f'<li class="receipt-item"><span class="receipt-name mono">✓ {fn_escaped}</span>{sz_str}</li>'
         content_html = f'<ul class="receipt-list">{items_html}</ul>'
         btn_label = "Upload More Files"
 

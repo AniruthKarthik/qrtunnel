@@ -11,6 +11,7 @@ import hashlib
 import io
 import time
 import zipfile
+from pathlib import Path
 
 from streaming_form_data import StreamingFormDataParser
 
@@ -22,6 +23,7 @@ from qrtunnel.server import (
 )
 from qrtunnel.utils import sha256_file, store_cached_checksum
 from qrtunnel.zip_stream import (
+    StreamingZipEntry,
     calculate_zip_size,
     collect_zip_entries,
     stream_zip_archive,
@@ -165,8 +167,93 @@ def test_active_transfer_tracker_parallel_coordination():
     assert finished2 is True
 
 
+def test_active_transfer_tracker_non_range_independent_streams():
+    """Ensure non-range downloads on the same IP do not collapse into a single stream."""
+    tracker = ActiveTransferTracker()
+    client_ip = "127.0.0.1"
+    path = "/files/doc.pdf"
+    file_size = 500
+
+    tracker.start_stream(client_ip, path, file_size, is_range=False, stream_id="conn1")
+    tracker.start_stream(client_ip, path, file_size, is_range=False, stream_id="conn2")
+
+    agg1, _ = tracker.update_sent(client_ip, path, 200, stream_id="conn1")
+    agg2, _ = tracker.update_sent(client_ip, path, 100, stream_id="conn2")
+
+    assert agg1 == 200
+    assert agg2 == 100
+
+    assert tracker.finish_stream(client_ip, path, stream_id="conn1") is True
+    assert tracker.finish_stream(client_ip, path, stream_id="conn2") is True
+
+
 def test_server_socket_and_protocol_config():
     """Verify ThreadingHTTPServer sets TCP_NODELAY and FileTransferHandler uses HTTP/1.1."""
     assert FileTransferHandler.protocol_version == "HTTP/1.1"
     assert FileTransferHandler.wbufsize == 65536
     assert ThreadingHTTPServer.daemon_threads is True
+
+
+def test_streaming_zip_size_prediction_matches_stream_at_4gb_boundary(monkeypatch):
+    """Verify that calculate_zip_size and stream_zip_archive agree at the 4 GB Zip64 threshold."""
+    s = 4294967167
+    entry = StreamingZipEntry(Path("/fake/4gb.bin"), "4gb.bin", s)
+    pred = calculate_zip_size([entry])
+
+    class DummyFileStream:
+        def __init__(self, size):
+            self.rem = size
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def read(self, n):
+            to_read = min(n, self.rem)
+            self.rem -= to_read
+            return b"A" * to_read if to_read > 0 else b""
+
+    class CountingOutStream:
+        def __init__(self):
+            self.count = 0
+
+        def write(self, b):
+            self.count += len(b)
+
+    out = CountingOutStream()
+    monkeypatch.setattr("builtins.open", lambda *args, **kwargs: DummyFileStream(s))
+    total_streamed = stream_zip_archive([entry], out, chunk_size=1048576 * 64)
+
+    assert total_streamed == pred
+
+
+def test_sendfile_oserror_falls_back_to_chunked_stream(tmp_path, monkeypatch):
+    """Verify that if os.sendfile raises OSError (e.g. on FUSE/NFS), handler falls back to chunked read."""
+    from unittest.mock import MagicMock
+
+    f = tmp_path / "test.bin"
+    f.write_bytes(b"HELLO SENDFILE FALLBACK")
+
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.file_paths = [str(f)]
+    handler.headers = {}
+    handler.client_address = ("127.0.0.1", 12345)
+    handler.connection = MagicMock()
+    handler.connection.fileno.return_value = 99
+    handler.wfile = io.BytesIO()
+    handler.send_response = MagicMock()
+    handler.send_header = MagicMock()
+    handler.end_headers = MagicMock()
+    handler.send_error = MagicMock()
+    handler._send_auth_cookie_if_needed = MagicMock()
+    handler.print_progress = MagicMock(return_value=0.0)
+
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+    monkeypatch.setattr("os.sendfile", MagicMock(side_effect=OSError(22, "Invalid argument")))
+
+    handler.serve_single_file("test.bin")
+
+    assert handler.wfile.getvalue() == b"HELLO SENDFILE FALLBACK"
+    assert not handler.send_error.called

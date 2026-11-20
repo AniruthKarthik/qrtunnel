@@ -82,9 +82,78 @@ def test_is_tunnel_request():
     assert handler.is_tunnel_request() is False
 
 
+def test_check_auth_rejects_unauthenticated_tunnel_request():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+    handler.path = "/download/secret.pdf"
+    handler.headers = {"CF-Connecting-IP": "203.0.113.195"}
+    FileTransferHandler.authorized_sessions = set()
+    assert handler.check_auth() is False
+
+
+def test_is_local_request_rejects_tunnel_forwarded_traffic():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+    handler.headers = {"X-Forwarded-For": "198.51.100.1"}
+    handler.public_url = None
+    assert handler.is_local_request() is False
+
+    handler.headers = {}
+    assert handler.is_local_request() is True
+
+
 def test_get_upload_success_page_light_theme():
     handler = FileTransferHandler.__new__(FileTransferHandler)
     html = handler.get_upload_success_page("document.pdf")
     assert "document.pdf" in html
     assert "#f8fafc" in html  # Light theme background
     assert "Upload Complete" in html
+
+
+def test_get_real_client_ip_validates_ip_format():
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("127.0.0.1", 54321)
+
+    # Valid IPv4 and IPv6 forwarded headers
+    handler.headers = {"X-Forwarded-For": "203.0.113.195, 10.0.0.1"}
+    assert handler.get_real_client_ip() == "203.0.113.195"
+
+    handler.headers = {"CF-Connecting-IP": "2001:db8::1"}
+    assert handler.get_real_client_ip() == "2001:db8::1"
+
+    # Malicious XSS or non-IP input in header must be rejected and fall back to socket IP
+    handler.headers = {"X-Forwarded-For": "<script>alert(1)</script>"}
+    assert handler.get_real_client_ip() == "127.0.0.1"
+
+
+def test_login_rate_limiting_and_lockout():
+    import io
+    from unittest.mock import MagicMock
+
+    from qrtunnel.config import Config
+
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.client_address = ("198.51.100.2", 54321)
+    handler.headers = {"Content-Length": "13"}
+    handler.authorized_sessions = set()
+    handler.close_connection = False
+
+    responses = []
+    handler.send_response = lambda code: responses.append(code)
+    handler.send_header = MagicMock()
+    handler.end_headers = MagicMock()
+    handler.wfile = io.BytesIO()
+
+    Config.OTP = "4242"
+    for _ in range(5):
+        handler.rfile = io.BytesIO(b"password=0000")
+        handler.handle_login()
+
+    assert 403 in responses
+    assert 429 in responses
+
+    # 6th attempt should be locked out with 429 even with valid password
+    responses.clear()
+    handler.rfile = io.BytesIO(b"password=4242")
+    handler.handle_login()
+    assert responses == [429]

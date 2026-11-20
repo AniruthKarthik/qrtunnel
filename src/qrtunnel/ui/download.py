@@ -1,7 +1,9 @@
 """Bauhaus Client Download Page - Remote client downloading files from host."""
 
+import html as html_lib
 import os
 from typing import List
+from urllib.parse import quote
 
 from ..utils import format_size
 from .session import render_receiver_session_script
@@ -14,20 +16,23 @@ def render_download_page(file_paths: List[str]) -> str:
     has_duplicates = len(basenames) != len(set(basenames))
     for idx, fp in enumerate(file_paths or []):
         fn = os.path.basename(fp)
-        href_path = f"/download/{idx}/{fn}" if has_duplicates else f"/download/{fn}"
+        href_fn = quote(fn)
+        href_path = f"/download/{idx}/{href_fn}" if has_duplicates else f"/download/{href_fn}"
         display_name = f"{os.path.basename(os.path.dirname(fp))}/{fn}" if has_duplicates else fn
+        fn_escaped = html_lib.escape(fn)
+        display_name_escaped = html_lib.escape(display_name)
         size_label = format_size(os.path.getsize(fp)) if os.path.isfile(fp) else "folder"
         file_list_html += f"""<li class="file-item">
   <div class="file-cb-wrap">
-    <input type="checkbox" class="file-cb" id="cb-{idx}" data-idx="{idx}" data-name="{fn}">
+    <input type="checkbox" class="file-cb" id="cb-{idx}" data-idx="{idx}" data-name="{fn_escaped}">
   </div>
-  <label for="cb-{idx}" class="file-info" title="Select {display_name}">
+  <label for="cb-{idx}" class="file-info" title="Select {display_name_escaped}">
     <span class="file-icon-box">{ICONS["file"]}</span>
-    <span class="file-name mono">{display_name}</span>
+    <span class="file-name mono">{display_name_escaped}</span>
   </label>
   <div class="file-meta">
     <span class="file-size-badge mono">{size_label}</span>
-    <a href="{href_path}" class="dl-single-btn" download title="Download {fn}">
+    <a href="{href_path}" class="dl-single-btn" download title="Download {fn_escaped}">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     </a>
   </div>

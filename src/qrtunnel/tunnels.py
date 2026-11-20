@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import threading
 import time
-import urllib.request
 from pathlib import Path
 
 from .config import Config
@@ -51,40 +50,15 @@ def get_cloudflared_path():
 
 
 def ensure_cloudflared():
-    """Ensure cloudflared is available; automatically downloads static binary if missing."""
+    """Locate cloudflared or provide safe install hints; avoids unverified remote binary execution."""
     existing = get_cloudflared_path()
     if existing:
         return existing
 
-    system = platform.system().lower()
-    machine = platform.machine().lower()
-    url = None
-
-    if system == "linux":
-        if machine in ("x86_64", "amd64"):
-            url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-        elif machine in ("aarch64", "arm64"):
-            url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64"
-    elif system == "windows":
-        url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-
-    if not url:
-        return None
-
-    dest_dir = Path.home() / ".qrtunnel" / "bin"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_file = dest_dir / ("cloudflared.exe" if system == "windows" else "cloudflared")
-
-    try:
-        print("[*] Downloading official cloudflared binary...")
-        urllib.request.urlretrieve(url, str(dest_file))
-        if system != "windows":
-            dest_file.chmod(0o755)
-        print(f"{OK} cloudflared downloaded to {dest_file}")
-        return str(dest_file)
-    except Exception as e:
-        print(f"[!] Could not download cloudflared: {e}")
-        return None
+    print("[!] cloudflared executable not found.")
+    print("    Install via package manager (e.g. brew/apt/winget install cloudflared) or from:")
+    print("    https://github.com/cloudflare/cloudflared/releases")
+    return None
 
 
 def get_ssh_key_args():
@@ -392,7 +366,7 @@ class SSHTunnel:
             *key_args,
             "-p",
             "443",
-            "-R0:localhost:{self.local_port}",
+            f"-R0:localhost:{self.local_port}",
             "a.pinggy.io",
         ]
         if self._try_provider("pinggy.io (port 443)", cmd_pinggy, timeout=12):

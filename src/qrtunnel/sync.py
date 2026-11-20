@@ -113,7 +113,7 @@ def cleanup_stale_staging_dirs(force: bool = False) -> int:
                     if pid_file.exists():
                         try:
                             owner_pid = int(pid_file.read_text().strip())
-                            if owner_pid == current_pid or not is_pid_alive(owner_pid):
+                            if owner_pid != current_pid and not is_pid_alive(owner_pid):
                                 should_delete = True
                         except (ValueError, OSError):
                             should_delete = True

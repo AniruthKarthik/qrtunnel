@@ -75,6 +75,19 @@ def test_download_page_renders_individual_and_zip_options(tmp_path):
     assert "/download/all.zip" not in html
 
 
+def test_serve_single_file_when_file_paths_none():
+    """Verify serve_single_file safely returns 404 instead of raising TypeError when file_paths is None."""
+    handler = FileTransferHandler.__new__(FileTransferHandler)
+    handler.file_paths = None
+    handler.send_error = MagicMock()
+    handler.serve_single_file("0/file.txt")
+    handler.send_error.assert_called_with(404, "File Not Found")
+
+    handler.send_error.reset_mock()
+    handler.serve_single_file("all.zip")
+    handler.send_error.assert_called_with(404, "No files to download")
+
+
 def test_serve_selected_zip(tmp_path):
     """Verify selected files are bundled into a custom zip archive."""
     f1 = tmp_path / "apple.txt"

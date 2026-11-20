@@ -14,22 +14,20 @@ def _read_key_unix():
     import termios
     import tty
 
-    fd = sys.stdin.fileno()
-
-    # Check if canonical mode is enabled (cooked) or disabled (raw)
-    # lflags is the 4th element (index 3)
     try:
-        attrs = termios.tcgetattr(fd)
-        is_canonical = attrs[3] & termios.ICANON
+        fd = sys.stdin.fileno()
     except Exception:
-        is_canonical = True  # Assume cooked if we can't tell
+        return None
 
+    old = None
     try:
-        if is_canonical:
-            # Switch to cbreak mode temporarily (raw input, but processed output)
-            # This prevents "staircase" printing when other threads print to stdout
-            old = termios.tcgetattr(fd)
-            tty.setcbreak(fd, termios.TCSADRAIN)
+        try:
+            attrs = termios.tcgetattr(fd)
+            if attrs[3] & termios.ICANON:
+                old = attrs
+                tty.setcbreak(fd, termios.TCSADRAIN)
+        except Exception:
+            pass
 
         # Select on the FILE DESCRIPTOR, not the sys.stdin object
         if not select.select([fd], [], [], 0.15)[0]:
@@ -90,13 +88,21 @@ def _read_key_unix():
         return None
 
     finally:
-        if is_canonical:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+        if old is not None:
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old)
+            except Exception:
+                pass
 
 
 def _read_key_win():
-    """Blocking single-key read on Windows."""
+    """Non-blocking single-key read on Windows with timeout."""
     import msvcrt
+    import time
+
+    if not msvcrt.kbhit():
+        time.sleep(0.15)
+        return None
 
     ch = msvcrt.getch()
     if ch in (b"\xe0", b"\x00"):

@@ -1,6 +1,7 @@
 """HTTP handlers for file download and upload."""
 
 import hashlib
+import hmac
 import http.cookies
 import io
 import json
@@ -62,9 +63,9 @@ class ActiveTransferTracker:
         self._lock = threading.Lock()
         self._transfers = {}
 
-    def start_stream(self, client_ip, path, file_size, is_range):
+    def start_stream(self, client_ip, path, file_size, is_range, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if not is_range and stream_id is not None else (client_ip, str(path))
             if key not in self._transfers:
                 self._transfers[key] = {
                     "sent": 0,
@@ -75,9 +76,11 @@ class ActiveTransferTracker:
             else:
                 self._transfers[key]["streams"] += 1
 
-    def update_sent(self, client_ip, path, n_bytes):
+    def update_sent(self, client_ip, path, n_bytes, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            if key not in self._transfers and stream_id is not None:
+                key = (client_ip, str(path))
             if key in self._transfers:
                 self._transfers[key]["sent"] += n_bytes
                 return min(
@@ -85,9 +88,11 @@ class ActiveTransferTracker:
                 ), self._transfers[key]["file_size"]
             return n_bytes, 0
 
-    def finish_stream(self, client_ip, path):
+    def finish_stream(self, client_ip, path, stream_id=None):
         with self._lock:
-            key = (client_ip, str(path))
+            key = (client_ip, str(path), stream_id) if stream_id is not None else (client_ip, str(path))
+            if key not in self._transfers and stream_id is not None:
+                key = (client_ip, str(path))
             if key in self._transfers:
                 self._transfers[key]["streams"] -= 1
                 if self._transfers[key]["streams"] <= 0:
@@ -97,6 +102,49 @@ class ActiveTransferTracker:
 
 
 _transfer_tracker = ActiveTransferTracker()
+
+
+class LoginRateLimiter:
+    """Thread-safe rate limiter and lockout tracker for PIN authentication."""
+
+    def __init__(self, max_attempts: int = 5, lockout_seconds: float = 60.0):
+        self._lock = threading.Lock()
+        self.max_attempts = max_attempts
+        self.lockout_seconds = lockout_seconds
+        self._attempts = {}
+
+    def is_locked_out(self, client_ip: str):
+        with self._lock:
+            if client_ip not in self._attempts:
+                return False, 0.0
+            attempts, lockout_until = self._attempts[client_ip]
+            now = time.monotonic()
+            if now < lockout_until:
+                return True, lockout_until - now
+            if lockout_until > 0 and now >= lockout_until:
+                del self._attempts[client_ip]
+                return False, 0.0
+            return False, 0.0
+
+    def record_failure(self, client_ip: str):
+        with self._lock:
+            now = time.monotonic()
+            attempts, lockout_until = self._attempts.get(client_ip, (0, 0.0))
+            if now < lockout_until:
+                return attempts, True
+            attempts += 1
+            if attempts >= self.max_attempts:
+                self._attempts[client_ip] = (attempts, now + self.lockout_seconds)
+                return attempts, True
+            self._attempts[client_ip] = (attempts, 0.0)
+            return attempts, False
+
+    def record_success(self, client_ip: str):
+        with self._lock:
+            self._attempts.pop(client_ip, None)
+
+
+_login_rate_limiter = LoginRateLimiter()
 
 
 class MultiFileTarget(BaseTarget):
@@ -257,9 +305,12 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             pass
         return now
 
+    def is_local_request(self):
+        return self.client_address[0] in ("127.0.0.1", "::1") and not self.is_tunnel_request()
+
     # ── auth ──
     def check_auth(self):
-        if self.client_address[0] in ("127.0.0.1", "::1"):
+        if self.is_local_request():
             return True
         if self.path in (
             "/ping",
@@ -291,13 +342,25 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def handle_login(self):
         try:
+            client_ip = self.get_real_client_ip()
+            locked, remaining = _login_rate_limiter.is_locked_out(client_ip)
+            if locked:
+                print(f"{WRN} Rate limit exceeded for {client_ip} on /login")
+                self.send_login_page(
+                    error=f"Too many failed attempts. Try again in {int(remaining) + 1}s.",
+                    status_code=429,
+                )
+                return
+
             content_length = int(self.headers["Content-Length"])
             post_data = self.rfile.read(content_length).decode("utf-8")
             from urllib.parse import parse_qs
 
             params = parse_qs(post_data)
             password = params.get("password", [""])[0]
-            if password == Config.OTP:
+            otp_str = str(Config.OTP or "")
+            if hmac.compare_digest(password, otp_str):
+                _login_rate_limiter.record_success(client_ip)
                 session_token = str(uuid.uuid4())
                 self.authorized_sessions.add(session_token)
                 self.send_response(303)
@@ -308,10 +371,16 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Length", "0")
                 self.send_header("Connection", "keep-alive")
                 self.end_headers()
-                print(f"{OK} Auth success from {self.client_address[0]}")
+                print(f"{OK} Auth success from {client_ip}")
             else:
-                print(f"{WRN} Failed auth attempt from {self.client_address[0]}")
-                self.send_login_page(error="Incorrect 4-digit code")
+                attempts, is_locked = _login_rate_limiter.record_failure(client_ip)
+                print(f"{WRN} Failed auth attempt ({attempts}) from {client_ip}")
+                err_msg = (
+                    "Too many failed attempts. Please wait 60 seconds."
+                    if is_locked
+                    else "Incorrect 4-digit code"
+                )
+                self.send_login_page(error=err_msg, status_code=429 if is_locked else 403)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
         except Exception as e:
@@ -327,10 +396,11 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     def get_receiver_session_script():
         return render_receiver_session_script()
 
-    def send_login_page(self, error=None):
+    def send_login_page(self, error=None, status_code=None):
         html = render_login_page(error=error)
         encoded = html.encode("utf-8")
-        self.send_response(200 if not error else 403)
+        code = status_code if status_code else (200 if not error else 403)
+        self.send_response(code)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -345,22 +415,33 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     # ── client network detection ──
     def get_real_client_ip(self):
-        cf_ip = self.headers.get("CF-Connecting-IP")
-        if cf_ip:
-            return cf_ip.strip()
-        xff = self.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0].strip()
-        x_real = self.headers.get("X-Real-IP")
-        if x_real:
-            return x_real.strip()
+        import ipaddress
+
+        for header in ("CF-Connecting-IP", "X-Forwarded-For", "X-Real-IP"):
+            val = self.headers.get(header)
+            if val:
+                candidate = val.split(",")[0].strip()
+                try:
+                    ipaddress.ip_address(candidate)
+                    return candidate
+                except ValueError:
+                    continue
         return self.client_address[0]
 
     def is_tunnel_request(self):
-        return bool(
-            self.headers.get("CF-Connecting-IP")
-            or self.headers.get("X-Forwarded-For")
-            or self.headers.get("X-Real-IP")
+        host = self.headers.get("Host", "").split(":")[0].lower() if self.headers else ""
+        is_loopback_host = host in ("localhost", "127.0.0.1", "::1", "")
+        has_proxy_headers = (
+            bool(
+                self.headers.get("CF-Connecting-IP")
+                or self.headers.get("X-Forwarded-For")
+                or self.headers.get("X-Real-IP")
+            )
+            if self.headers
+            else False
+        )
+        return has_proxy_headers or (
+            bool(getattr(self, "public_url", None)) and not is_loopback_host
         )
 
     def is_request_from_same_lan(self):
@@ -397,7 +478,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
     # ── routing ──
     def do_GET(self):
         parsed_path = urlparse(self.path)
-        is_local = self.client_address[0] in ("127.0.0.1", "::1")
+        is_local = self.is_local_request()
 
         # Sender & Receiver Web UI & API routes (local access)
         if is_local:
@@ -455,7 +536,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed_path = urlparse(self.path)
-        is_local = self.client_address[0] in ("127.0.0.1", "::1")
+        is_local = self.is_local_request()
 
         # Sender & Receiver API routes (local access)
         if is_local:
@@ -1414,6 +1495,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
 
     def serve_zip_archive(self, file_paths=None, zip_name="qrtunnel-files.zip"):
         paths = file_paths if file_paths is not None else self.file_paths
+        if not paths:
+            self.send_error(404, "No files to download")
+            return
         self.stream_zip_response(file_paths=paths, zip_name=zip_name)
 
     def serve_single_file(self, filename):
@@ -1422,6 +1506,9 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             return
         if filename == "selected.zip":
             self.serve_selected_zip()
+            return
+        if not self.file_paths:
+            self.send_error(404, "File Not Found")
             return
         target_path = None
         if "/" in filename:
@@ -1470,18 +1557,24 @@ class FileTransferHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.flush()
             is_range = bool(range_req)
-            _transfer_tracker.start_stream(self.client_address[0], target_path, file_size, is_range)
+            client_ip = self.get_real_client_ip()
+            stream_id = id(self) if not is_range else None
+            _transfer_tracker.start_stream(
+                client_ip, target_path, file_size, is_range, stream_id=stream_id
+            )
             try:
                 with open(target_path, "rb") as f:
                     if start > 0:
                         f.seek(start)
-                    if platform.system() == "Linux" and hasattr(os, "sendfile"):
+                    use_sendfile = platform.system() == "Linux" and hasattr(os, "sendfile")
+                    sent = 0
+                    last_update = 0
+                    chunk_size = (
+                        1048576  # 1 MB slice for high wire throughput & smooth progress
+                    )
+
+                    if use_sendfile:
                         try:
-                            sent = 0
-                            last_update = 0
-                            chunk_size = (
-                                1048576  # 1 MB slice for high wire throughput & smooth progress
-                            )
                             while sent < content_length:
                                 to_send = min(chunk_size, content_length - sent)
                                 n = os.sendfile(
@@ -1494,7 +1587,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                     break
                                 sent += n
                                 agg_sent, _ = _transfer_tracker.update_sent(
-                                    self.client_address[0], target_path, n
+                                    client_ip, target_path, n, stream_id=stream_id
                                 )
                                 last_update = self.print_progress(
                                     f"Download {filename}",
@@ -1504,12 +1597,13 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                 )
                         except BrokenPipeError:
                             print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
-                    else:
+                        except OSError:
+                            use_sendfile = False
+
+                    if not use_sendfile and sent < content_length:
                         try:
-                            remaining = content_length
-                            chunk_size = 1048576  # 1 MB
-                            sent = 0
-                            last_update = 0
+                            f.seek(start + sent)
+                            remaining = content_length - sent
                             while remaining > 0:
                                 chunk = f.read(min(chunk_size, remaining))
                                 if not chunk:
@@ -1518,7 +1612,7 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                                 remaining -= len(chunk)
                                 sent += len(chunk)
                                 agg_sent, _ = _transfer_tracker.update_sent(
-                                    self.client_address[0], target_path, len(chunk)
+                                    client_ip, target_path, len(chunk), stream_id=stream_id
                                 )
                                 last_update = self.print_progress(
                                     f"Download {filename}",
@@ -1531,15 +1625,15 @@ class FileTransferHandler(BaseHTTPRequestHandler):
                             print(f"\n{ERR} Client disconnected during transfer of '{filename}'")
             finally:
                 is_last_stream = _transfer_tracker.finish_stream(
-                    self.client_address[0], target_path
+                    client_ip, target_path, stream_id=stream_id
                 )
 
             if is_last_stream:
                 self.print_progress(f"Download {filename}", file_size, file_size, force=True)
                 print()
-                print(f"{OK} File '{filename}' served to {self.client_address[0]}")
+                print(f"{OK} File '{filename}' served to {client_ip}")
                 print(f"{OK} SHA256: {sha256_file(target_path)}")
-                log_transfer(filename, file_size, self.client_address[0], "send")
+                log_transfer(filename, file_size, client_ip, "send")
         except Exception as e:
             if not isinstance(e, BrokenPipeError) and "Broken pipe" not in str(e):
                 print(f"{ERR} Error serving file '{filename}': {e}")

@@ -13,3 +13,19 @@ def test_log_transfer_writes_history(tmp_path, monkeypatch):
     assert entries[0]["size"] == 8
     assert entries[0]["client_ip"] == "192.168.1.10"
     assert entries[0]["direction"] == "send"
+
+
+def test_concurrent_log_transfer(tmp_path, monkeypatch):
+    """Verify concurrent log_transfer calls from multiple threads do not drop entries."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(Config, "CONFIG_DIR", tmp_path)
+
+    def worker(i):
+        log_transfer(f"file_{i}.txt", i * 100, "192.168.1.10", "send")
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        list(executor.map(worker, range(30)))
+
+    entries = load_history()
+    assert len(entries) == 30
