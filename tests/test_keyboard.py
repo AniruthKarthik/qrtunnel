@@ -1,10 +1,17 @@
 import sys
-import termios
 from unittest.mock import patch
+
+import pytest
 
 from qrtunnel import keyboard
 
+try:
+    import termios
+except ImportError:
+    termios = None
 
+
+@pytest.mark.skipif(termios is None, reason="termios module required for Unix keyboard tests")
 def test_read_key_unix_non_tty(monkeypatch):
     """Verify _read_key_unix does not crash with UnboundLocalError when tcgetattr raises on non-TTY."""
     monkeypatch.setattr(sys.stdin, "fileno", lambda: 0)
@@ -15,6 +22,7 @@ def test_read_key_unix_non_tty(monkeypatch):
         assert res is None
 
 
+@pytest.mark.skipif(termios is None, reason="termios module required for Unix keyboard tests")
 def test_read_key_unix_no_fileno(monkeypatch):
     """Verify _read_key_unix gracefully returns None when stdin has no fileno."""
     import io
